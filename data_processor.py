@@ -123,11 +123,65 @@ def preprocess_video_data(video_file_paths):
 	return np.concatenate(video_samples)
 
 
-# TODO: normalize audio
-# TODO: save normalization values
-# TODO: use image-specific normalizations (channelwise?)
-def normalize_video_samples(video_samples):
-	video_samples /= 255
-	video_samples -= np.mean(video_samples)
+class Normalizer:
 
-	return video_samples
+	@classmethod
+	def normalize(cls, audio_samples, video_samples):
+		audio_normalization_data = cls.__init_audio_normalization_data(audio_samples)
+		video_normalization_data = cls.__init_video_normalization_data(video_samples)
+
+		normalization_data = NormalizationData(audio_normalization_data, video_normalization_data)
+		cls.apply_normalization(audio_samples, video_samples, normalization_data)
+
+		return normalization_data
+
+	@classmethod
+	def apply_normalization(cls, audio_samples, video_samples, normalization_data):
+		cls.__normalize_audio_samples(audio_samples, normalization_data.audio_normalization_data)
+		cls.__normalize_video_samples(video_samples, normalization_data.video_normalization_data)
+
+	@staticmethod
+	def __init_audio_normalization_data(audio_samples):
+		return AudioNormalizationData(
+			np.mean(audio_samples),
+			np.std(audio_samples - np.mean(audio_samples))
+		)
+
+	@staticmethod
+	def __init_video_normalization_data(video_samples):
+		# video_samples: slices x frames_per_slice x height x width x channels
+		channel_means = [video_samples[:, :, :, :, channel].mean() / 255 for channel in range(3)]
+
+		return VideoNormalizationData(channel_means)
+
+	@staticmethod
+	def __normalize_audio_samples(audio_samples, audio_normalization_data):
+		audio_samples -= audio_normalization_data.mean
+		audio_samples /= audio_normalization_data.std
+
+	@staticmethod
+	def __normalize_video_samples(video_samples, video_normalization_data):
+		video_samples /= 255
+
+		for channel in range(3):
+			video_samples[:, :, :, :, channel] -= video_normalization_data.channel_means[channel]
+
+
+class NormalizationData:
+
+	def __init__(self, audio_normalization_data, video_normalization_data):
+		self.audio_normalization_data = audio_normalization_data
+		self.video_normalization_data = video_normalization_data
+
+
+class AudioNormalizationData:
+
+	def __init__(self, mean, std):
+		self.mean = mean
+		self.std = std
+
+
+class VideoNormalizationData:
+
+	def __init__(self, channel_means):
+		self.channel_means = channel_means

@@ -2,6 +2,7 @@ import argparse
 import os
 import shutil
 from datetime import datetime
+import pickle
 
 import numpy as np
 
@@ -19,7 +20,11 @@ def preprocess(args):
 
 	mixed_audio_samples, speech_mask_audio_samples = data_processor.preprocess_audio_data(speech_file_paths, noise_file_paths)
 	video_samples = data_processor.preprocess_video_data(video_file_paths)
-	video_samples = data_processor.normalize_video_samples(video_samples)
+
+	normalization_data = data_processor.Normalizer.normalize(mixed_audio_samples, video_samples)
+
+	with open(args.normalization_cache, 'wb') as normalization_cache_fd:
+		pickle.dump(normalization_data, normalization_cache_fd)
 
 	np.savez(
 		args.preprocessed_blob_path,
@@ -57,6 +62,9 @@ def predict(args):
 
 	network = SpeechEnhancementNet.load(args.model_cache, args.weights_cache)
 
+	with open(args.normalization_cache, 'rb') as normalization_cache_fd:
+		normalization_data = pickle.load(normalization_cache_fd)
+
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		speaker_prediction_dir = os.path.join(prediction_output_dir, speaker_id)
@@ -72,9 +80,8 @@ def predict(args):
 					speech_file_path, noise_file_path
 				)
 
-				video_samples = data_processor.normalize_video_samples(
-					data_processor.preprocess_video_sample(video_file_path)
-				)
+				video_samples = data_processor.preprocess_video_sample(video_file_path)
+				data_processor.Normalizer.apply_normalization(mixed_audio_samples, video_samples, normalization_data)
 
 				predicted_speech_masks = network.predict(video_samples, mixed_audio_samples)
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
@@ -128,6 +135,7 @@ def main():
 	preprocess_parser.add_argument("--dataset_dir", type=str, required=True)
 	preprocess_parser.add_argument("--noise_dirs", nargs="+", type=str, required=True)
 	preprocess_parser.add_argument("--preprocessed_blob_path", type=str, required=True)
+	preprocess_parser.add_argument("--normalization_cache", type=str, required=True)
 	preprocess_parser.add_argument("--speakers", nargs="+", type=str)
 	preprocess_parser.add_argument("--ignored_speakers", nargs="+", type=str)
 	preprocess_parser.set_defaults(func=preprocess)
@@ -145,6 +153,7 @@ def main():
 	predict_parser.add_argument("--noise_dirs", nargs="+", type=str, required=True)
 	predict_parser.add_argument("--model_cache", type=str, required=True)
 	predict_parser.add_argument("--weights_cache", type=str, required=True)
+	predict_parser.add_argument("--normalization_cache", type=str, required=True)
 	predict_parser.add_argument("--prediction_output_dir", type=str, required=True)
 	predict_parser.add_argument("--speakers", nargs="+", type=str)
 	predict_parser.add_argument("--ignored_speakers", nargs="+", type=str)
