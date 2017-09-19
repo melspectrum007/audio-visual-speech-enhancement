@@ -8,7 +8,7 @@ import numpy as np
 
 import data_processor
 from dataset import AudioVisualDataset, AudioDataset
-from network import SpeechEnhancementNet
+from network import SpeechEnhancementGAN
 
 
 def preprocess(args):
@@ -51,8 +51,8 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 def train(args):
 	mixed_audio_samples, speech_mask_audio_samples, video_samples = load_preprocessed_samples(args.preprocessed_blob_path)
 
-	network = SpeechEnhancementNet.build(video_samples.shape[1:], mixed_audio_samples.shape[1:])
-	network.train(video_samples, mixed_audio_samples, speech_mask_audio_samples)
+	network = SpeechEnhancementGAN(video_samples.shape[1:], mixed_audio_samples.shape[1:])
+	network.train(video_samples, mixed_audio_samples, speech_mask_audio_samples, args.tensorboard_dir)
 	network.dump(args.model_cache, args.weights_cache)
 
 
@@ -60,7 +60,7 @@ def predict(args):
 	prediction_output_dir = os.path.join(args.prediction_output_dir, '{:%Y-%m-%d_%H-%M-%S}'.format(datetime.now()))
 	os.mkdir(prediction_output_dir)
 
-	network = SpeechEnhancementNet.load(args.model_cache, args.weights_cache)
+	GM = SpeechEnhancementGAN.load_GM(args.model_cache, args.weights_cache)
 
 	with open(args.normalization_cache, 'rb') as normalization_cache_fd:
 		normalization_data = pickle.load(normalization_cache_fd)
@@ -71,7 +71,7 @@ def predict(args):
 		os.mkdir(speaker_prediction_dir)
 
 		speech_file_paths, video_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=1
 		)
 
 		for speech_file_path, video_file_path, noise_file_path in zip(speech_file_paths, video_file_paths, noise_file_paths):
@@ -80,10 +80,16 @@ def predict(args):
 					speech_file_path, noise_file_path
 				)
 
+				print("preprocessing sample...")
 				video_samples = data_processor.preprocess_video_sample(video_file_path)
 				data_processor.Normalizer.apply_normalization(mixed_audio_samples, video_samples, normalization_data)
 
-				predicted_speech_masks = network.predict(video_samples, mixed_audio_samples)
+				print("predicting using GM...")
+				extended_mixed_audio_samples = np.expand_dims(mixed_audio_samples, -1)  # append channels axis
+				predicted_speech_masks = GM.predict([video_samples, extended_mixed_audio_samples])#network.predict(video_samples, mixed_audio_samples)
+				predicted_speech_masks = np.squeeze(predicted_speech_masks)
+
+				print("reconstructing signal...")
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_audio_samples, predicted_speech_masks, sample_rate=44100
 				)
@@ -98,7 +104,7 @@ def predict(args):
 				shutil.copy(video_file_path, sample_prediction_dir)
 
 			except Exception as e:
-				print("failed to preprocess %s (%s). skipping" % (video_file_path, e))
+				print("failed to predict %s (%s). skipping" % (video_file_path, e))
 
 
 def list_speakers(args):
@@ -144,6 +150,7 @@ def main():
 	train_parser.add_argument("--preprocessed_blob_path", type=str, required=True)
 	train_parser.add_argument("--model_cache", type=str, required=True)
 	train_parser.add_argument("--weights_cache", type=str, required=True)
+	train_parser.add_argument("--tensorboard_dir", type=str, required=True)
 	# train_parser.add_argument("--speakers", nargs="+", type=str)
 	# train_parser.add_argument("--ignored_speakers", nargs="+", type=str)
 	train_parser.set_defaults(func=train)
