@@ -21,10 +21,8 @@ def preprocess(args):
 	mixed_audio_samples, speech_mask_audio_samples = data_processor.preprocess_audio_data(speech_file_paths, noise_file_paths)
 	video_samples = data_processor.preprocess_video_data(video_file_paths)
 
-	normalization_data = data_processor.Normalizer.normalize(mixed_audio_samples, video_samples)
-
-	with open(args.normalization_cache, 'wb') as normalization_cache_fd:
-		pickle.dump(normalization_data, normalization_cache_fd)
+	normalization_data = data_processor.VideoDataNormalizer.normalize(video_samples)
+	normalization_data.save(args.normalization_cache)
 
 	np.savez(
 		args.preprocessed_blob_path,
@@ -51,19 +49,19 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 def train(args):
 	mixed_audio_samples, speech_mask_audio_samples, video_samples = load_preprocessed_samples(args.preprocessed_blob_path)
 
-	network = SpeechEnhancementGAN(video_samples.shape[1:], mixed_audio_samples.shape[1:])
-	network.train(video_samples, mixed_audio_samples, speech_mask_audio_samples, args.tensorboard_dir)
-	network.dump(args.model_cache, args.weights_cache)
+	network = SpeechEnhancementGAN.build(video_samples.shape[1:], mixed_audio_samples.shape[1:])
+	network.save_generator_model(args.model_cache)
+
+	network.train(video_samples, mixed_audio_samples, speech_mask_audio_samples, args.weights_cache, args.tensorboard_dir)
+	network.save_generator_weights(args.weights_cache)
 
 
 def predict(args):
 	prediction_output_dir = os.path.join(args.prediction_output_dir, '{:%Y-%m-%d_%H-%M-%S}'.format(datetime.now()))
 	os.mkdir(prediction_output_dir)
 
-	GM = SpeechEnhancementGAN.load_GM(args.model_cache, args.weights_cache)
-
-	with open(args.normalization_cache, 'rb') as normalization_cache_fd:
-		normalization_data = pickle.load(normalization_cache_fd)
+	generator = SpeechEnhancementGAN.load_generator(args.model_cache, args.weights_cache)
+	normalization_data = data_processor.VideoNormalizationData.load(args.normalization_cache)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
@@ -71,7 +69,7 @@ def predict(args):
 		os.mkdir(speaker_prediction_dir)
 
 		speech_file_paths, video_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=1
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5
 		)
 
 		for speech_file_path, video_file_path, noise_file_path in zip(speech_file_paths, video_file_paths, noise_file_paths):
@@ -80,16 +78,12 @@ def predict(args):
 					speech_file_path, noise_file_path
 				)
 
-				print("preprocessing sample...")
 				video_samples = data_processor.preprocess_video_sample(video_file_path)
-				data_processor.Normalizer.apply_normalization(mixed_audio_samples, video_samples, normalization_data)
+				data_processor.VideoDataNormalizer.apply_normalization(video_samples, normalization_data)
 
-				print("predicting using GM...")
 				extended_mixed_audio_samples = np.expand_dims(mixed_audio_samples, -1)  # append channels axis
-				predicted_speech_masks = GM.predict([video_samples, extended_mixed_audio_samples])#network.predict(video_samples, mixed_audio_samples)
-				predicted_speech_masks = np.squeeze(predicted_speech_masks)
+				predicted_speech_masks = generator.predict([video_samples, extended_mixed_audio_samples])
 
-				print("reconstructing signal...")
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_audio_samples, predicted_speech_masks, sample_rate=44100
 				)

@@ -1,5 +1,6 @@
 import math
 import multiprocess
+import pickle
 
 import numpy as np
 
@@ -123,65 +124,40 @@ def preprocess_video_data(video_file_paths):
 	return np.concatenate(video_samples)
 
 
-class Normalizer:
+class VideoDataNormalizer(object):
 
 	@classmethod
-	def normalize(cls, audio_samples, video_samples):
-		audio_normalization_data = cls.__init_audio_normalization_data(audio_samples)
-		video_normalization_data = cls.__init_video_normalization_data(video_samples)
-
-		normalization_data = NormalizationData(audio_normalization_data, video_normalization_data)
-		cls.apply_normalization(audio_samples, video_samples, normalization_data)
+	def normalize(cls, video_samples):
+		normalization_data = cls.__init_normalization_data(video_samples)
+		cls.apply_normalization(video_samples, normalization_data)
 
 		return normalization_data
 
 	@classmethod
-	def apply_normalization(cls, audio_samples, video_samples, normalization_data):
-		cls.__normalize_audio_samples(audio_samples, normalization_data.audio_normalization_data)
-		cls.__normalize_video_samples(video_samples, normalization_data.video_normalization_data)
+	def apply_normalization(cls, video_samples, normalization_data):
+		video_samples /= 255
+
+		for channel in range(3):
+			video_samples[:, :, :, :, channel] -= normalization_data.channel_means[channel]
 
 	@staticmethod
-	def __init_audio_normalization_data(audio_samples):
-		return AudioNormalizationData(
-			np.mean(audio_samples),
-			np.std(audio_samples - np.mean(audio_samples))
-		)
-
-	@staticmethod
-	def __init_video_normalization_data(video_samples):
+	def __init_normalization_data(video_samples):
 		# video_samples: slices x frames_per_slice x height x width x channels
 		channel_means = [video_samples[:, :, :, :, channel].mean() / 255 for channel in range(3)]
 
 		return VideoNormalizationData(channel_means)
 
-	@staticmethod
-	def __normalize_audio_samples(audio_samples, audio_normalization_data):
-		audio_samples -= audio_normalization_data.mean
-		audio_samples /= audio_normalization_data.std
 
-	@staticmethod
-	def __normalize_video_samples(video_samples, video_normalization_data):
-		video_samples /= 255
-
-		for channel in range(3):
-			video_samples[:, :, :, :, channel] -= video_normalization_data.channel_means[channel]
-
-
-class NormalizationData:
-
-	def __init__(self, audio_normalization_data, video_normalization_data):
-		self.audio_normalization_data = audio_normalization_data
-		self.video_normalization_data = video_normalization_data
-
-
-class AudioNormalizationData:
-
-	def __init__(self, mean, std):
-		self.mean = mean
-		self.std = std
-
-
-class VideoNormalizationData:
+class VideoNormalizationData(object):
 
 	def __init__(self, channel_means):
 		self.channel_means = channel_means
+
+	def save(self, path):
+		with open(path, 'wb') as normalization_fd:
+			pickle.dump(self, normalization_fd)
+
+	@staticmethod
+	def load(path):
+		with open(path, 'rb') as normalization_fd:
+			return pickle.load(normalization_fd)
