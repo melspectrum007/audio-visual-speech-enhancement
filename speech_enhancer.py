@@ -71,6 +71,8 @@ def predict(args):
 
 		for speech_file_path, video_file_path, noise_file_path in zip(speech_file_paths, video_file_paths, noise_file_paths):
 			try:
+				print("predicting %s..." % video_file_path)
+
 				mixed_audio_samples, speech_mask_audio_samples, mixed_signal = data_processor.preprocess_audio_pair(
 					speech_file_path, noise_file_path
 				)
