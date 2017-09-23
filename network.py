@@ -230,13 +230,13 @@ class SpeechEnhancementGAN(object):
 		model.summary()
 		return model
 
-	def train(self, video, noisy_audio, clean_audio, model_cache_dir, tensorboard_dir, batch_size=32, n_epochs=20, n_epochs_per_model=2):
+	def train(self, video, noisy_audio, clean_audio, model_cache_dir, tensorboard_dir, batch_size=32, n_epochs=100, n_epochs_per_model=2):
 		noisy_audio = np.expand_dims(noisy_audio, -1)  # append channels axis
 		clean_audio = np.expand_dims(clean_audio, -1)  # append channels axis
 
 		model_cache = ModelCache(model_cache_dir)
+		n_samples = video.shape[0]
 
-		# n_samples = video.shape[0]
 		# tensorboard_callback = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 		# early_stopping_callback = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=1)
 
@@ -244,40 +244,54 @@ class SpeechEnhancementGAN(object):
 			model_cache.generator_path(), monitor='loss', mode='min', save_best_only=True, verbose=1
 		)
 
-		self.__generator.fit([video, noisy_audio], clean_audio,
-			batch_size=batch_size, epochs=n_epochs,
-			callbacks=[generator_checkpoint], verbose=1
+		adversarial_checkpoint = ModelCheckpoint(
+			model_cache.adversarial_path(), monitor='loss', mode='min', save_best_only=True, verbose=1
 		)
 
-		# for e in range(0, n_epochs, n_epochs_per_model):
-		# 	print("training (epoch = %d)" % e)
+		discriminator_checkpoint = ModelCheckpoint(
+			model_cache.discriminator_path(), monitor='loss', mode='min', save_best_only=True, verbose=1
+		)
 
-			# self.__generator.fit([video, noisy_audio], clean_audio,
-			# 	batch_size=batch_size, epochs=n_epochs_per_model, callbacks=[checkpoint_callback, tensorboard_callback], verbose=1)
+		for e in range(0, n_epochs, n_epochs_per_model):
+			print("training (epoch = %d) ..." % e)
 
-			# for layer in self.__discriminator.layers:
-			# 	layer.trainable = False
+			print("training generator ...")
+			self.__generator.fit([video, noisy_audio], clean_audio,
+				batch_size=batch_size, epochs=n_epochs_per_model,
+				callbacks=[generator_checkpoint], verbose=1
+			)
 
-			# self.__adversarial.fit([video, noisy_audio], np.ones(n_samples),
-			# 	batch_size=batch_size, epochs=n_epochs_per_model, verbose=1)
-			#
-			# ind = np.random.permutation(n_samples)
-			#
-			# discriminator_input = np.concatenate((
-			# 	noisy_audio[ind[:(n_samples / 2)]],
-			# 	clean_audio[ind[(n_samples / 2):]]
-			# ))
-			#
-			# discriminator_labels = np.concatenate((
-			# 	np.zeros(n_samples / 2),
-			# 	np.ones(n_samples / 2)
-			# ))
-			#
-			# for layer in self.__discriminator.layers:
-			# 	layer.trainable = True
-			#
-			# self.__discriminator.fit(discriminator_input, discriminator_labels,
-			# 	batch_size=batch_size, epochs=n_epochs_per_model, verbose=1)
+			# TODO: maybe train the discriminator with generator outputs instead of real noisy samples?
+
+			ind = np.random.permutation(n_samples)
+
+			discriminator_input = np.concatenate((
+				noisy_audio[ind[:(n_samples / 2)]],
+				clean_audio[ind[(n_samples / 2):]]
+			))
+
+			discriminator_labels = np.concatenate((
+				np.zeros(n_samples / 2),
+				np.ones(n_samples / 2)
+			))
+
+			for layer in self.__discriminator.layers:
+				layer.trainable = True
+
+			print("training discriminator ...")
+			self.__discriminator.fit(discriminator_input, discriminator_labels,
+				batch_size=batch_size, epochs=n_epochs_per_model,
+				callbacks=[discriminator_checkpoint], verbose=1
+			)
+
+			for layer in self.__discriminator.layers:
+				layer.trainable = False
+
+			print("training adversarial ...")
+			self.__adversarial.fit([video, noisy_audio], np.ones(n_samples),
+				batch_size=batch_size, epochs=n_epochs_per_model,
+				callbacks=[adversarial_checkpoint], verbose=1
+			)
 
 	def predict(self, video, noisy_audio):
 		noisy_audio = np.expand_dims(noisy_audio, -1)  # append channels axis
