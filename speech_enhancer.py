@@ -2,7 +2,6 @@ import argparse
 import os
 import shutil
 from datetime import datetime
-import pickle
 
 import numpy as np
 
@@ -50,17 +49,15 @@ def train(args):
 	mixed_audio_samples, speech_mask_audio_samples, video_samples = load_preprocessed_samples(args.preprocessed_blob_path)
 
 	network = SpeechEnhancementGAN.build(video_samples.shape[1:], mixed_audio_samples.shape[1:])
-	network.save_generator_model(args.model_cache)
-
-	network.train(video_samples, mixed_audio_samples, speech_mask_audio_samples, args.weights_cache, args.tensorboard_dir)
-	network.save_generator_weights(args.weights_cache)
+	network.train(video_samples, mixed_audio_samples, speech_mask_audio_samples, args.model_cache_dir, args.tensorboard_dir)
+	network.save(args.model_cache_dir)
 
 
 def predict(args):
 	prediction_output_dir = os.path.join(args.prediction_output_dir, '{:%Y-%m-%d_%H-%M-%S}'.format(datetime.now()))
 	os.mkdir(prediction_output_dir)
 
-	generator = SpeechEnhancementGAN.load_generator(args.model_cache, args.weights_cache)
+	network = SpeechEnhancementGAN.load(args.model_cache_dir)
 	normalization_data = data_processor.VideoNormalizationData.load(args.normalization_cache)
 
 	speaker_ids = list_speakers(args)
@@ -81,8 +78,7 @@ def predict(args):
 				video_samples = data_processor.preprocess_video_sample(video_file_path)
 				data_processor.VideoDataNormalizer.apply_normalization(video_samples, normalization_data)
 
-				extended_mixed_audio_samples = np.expand_dims(mixed_audio_samples, -1)  # append channels axis
-				predicted_speech_masks = generator.predict([video_samples, extended_mixed_audio_samples])
+				predicted_speech_masks = network.predict(video_samples, mixed_audio_samples)
 
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_audio_samples, predicted_speech_masks, sample_rate=44100
@@ -142,8 +138,7 @@ def main():
 
 	train_parser = action_parsers.add_parser("train")
 	train_parser.add_argument("--preprocessed_blob_path", type=str, required=True)
-	train_parser.add_argument("--model_cache", type=str, required=True)
-	train_parser.add_argument("--weights_cache", type=str, required=True)
+	train_parser.add_argument("--model_cache_dir", type=str, required=True)
 	train_parser.add_argument("--tensorboard_dir", type=str, required=True)
 	# train_parser.add_argument("--speakers", nargs="+", type=str)
 	# train_parser.add_argument("--ignored_speakers", nargs="+", type=str)
@@ -152,8 +147,7 @@ def main():
 	predict_parser = action_parsers.add_parser("predict")
 	predict_parser.add_argument("--dataset_dir", type=str, required=True)
 	predict_parser.add_argument("--noise_dirs", nargs="+", type=str, required=True)
-	predict_parser.add_argument("--model_cache", type=str, required=True)
-	predict_parser.add_argument("--weights_cache", type=str, required=True)
+	predict_parser.add_argument("--model_cache_dir", type=str, required=True)
 	predict_parser.add_argument("--normalization_cache", type=str, required=True)
 	predict_parser.add_argument("--prediction_output_dir", type=str, required=True)
 	predict_parser.add_argument("--speakers", nargs="+", type=str)
