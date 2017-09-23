@@ -82,20 +82,25 @@ def preprocess_audio_pair(speech_file_path, noise_file_path):
 	return mixed_spectrograms, speech_masks, mixed_signal
 
 
-def reconstruct_speech_signal(mixed_spectrograms, speech_masks, sample_rate):
-	mixed_spectrograms = [mixed_spectrograms[i] for i in range(mixed_spectrograms.shape[0])]
-	full_mixed_spectrogram = np.concatenate(mixed_spectrograms, axis=1)
+def reconstruct_speech_signal(mixed_signal, speech_masks):
+	mel_converter = MelConverter(mixed_signal.get_sample_rate(), n_mel_freqs=128, freq_min_hz=0, freq_max_hz=4000)
+
+	mixed_spectrogram, original_phase = mel_converter.signal_to_mel_spectrogram(mixed_signal, get_phase=True)
 
 	speech_masks = [speech_masks[i] for i in range(speech_masks.shape[0])]
-	full_speech_mask = np.concatenate(speech_masks, axis=1)
+	speech_mask = np.concatenate(speech_masks, axis=1)
 
-	full_speech_mask[full_speech_mask >= 0.5] = 1
-	full_speech_mask[full_speech_mask < 0.5] = 0
+	speech_mask[speech_mask >= 0.5] = 1
+	speech_mask[speech_mask < 0.5] = 0
 
-	speech_spectrogram = full_mixed_spectrogram * full_speech_mask
+	spectrogram_length = min(mixed_spectrogram.shape[1], speech_mask.shape[1])
+	mixed_spectrogram = mixed_spectrogram[:, :spectrogram_length]
+	original_phase = original_phase[:, :spectrogram_length]
+	speech_mask = speech_mask[:, :spectrogram_length]
 
-	mel_converter = MelConverter(sample_rate, n_mel_freqs=128, freq_min_hz=0, freq_max_hz=4000)
-	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram)
+	speech_spectrogram = mixed_spectrogram * speech_mask
+
+	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, original_phase)
 
 
 def preprocess_audio_data(speech_file_paths, noise_file_paths):

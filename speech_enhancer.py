@@ -81,10 +81,7 @@ def predict(args):
 				data_processor.VideoDataNormalizer.apply_normalization(video_samples, normalization_data)
 
 				predicted_speech_masks = network.predict(video_samples, mixed_audio_samples)
-
-				predicted_speech_signal = data_processor.reconstruct_speech_signal(
-					mixed_audio_samples, predicted_speech_masks, sample_rate=44100
-				)
+				predicted_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, predicted_speech_masks)
 
 				speech_name = os.path.splitext(os.path.basename(video_file_path))[0]
 				noise_name = os.path.splitext(os.path.basename(noise_file_path))[0]
