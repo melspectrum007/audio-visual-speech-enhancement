@@ -15,8 +15,7 @@ import numpy as np
 
 class SpeechEnhancementGAN(object):
 
-	def __init__(self, generator, discriminator, adversarial):
-		self.__generator = generator
+	def __init__(self, discriminator, adversarial):
 		self.__discriminator = discriminator
 		self.__adversarial = adversarial
 
@@ -26,7 +25,7 @@ class SpeechEnhancementGAN(object):
 		discriminator = cls.__build_discriminator(audio_spectrogram_shape)
 		adversarial = cls.__build_adversarial(video_shape, audio_spectrogram_shape, generator, discriminator)
 
-		return SpeechEnhancementGAN(generator, discriminator, adversarial)
+		return SpeechEnhancementGAN(discriminator, adversarial)
 
 	@classmethod
 	def __build_generator(cls, video_shape, audio_spectrogram_shape):
@@ -55,15 +54,15 @@ class SpeechEnhancementGAN(object):
 
 		x = Dense(
 			audio_spectrogram_shape[0] * audio_spectrogram_shape[1],
-			activation='sigmoid', kernel_initializer='he_normal', name='g-av-dense-output'
+			kernel_initializer='he_normal', name='g-av-dense-output'
 		)(x)
 
 		audio_output = Reshape(extended_audio_spectrogram_shape, name='g-av-reshape-output')(x)
 
 		model = Model(inputs=[video_input, audio_input], outputs=audio_output)
 
-		optimizer = optimizers.adam(lr=0.001, decay=1e-6)
-		model.compile(loss='binary_crossentropy', optimizer=optimizer)
+		# optimizer = optimizers.adam(lr=0.001, decay=1e-6)
+		# model.compile(loss='mean_squared_error', optimizer=optimizer)
 
 		model.summary()
 		return model
@@ -212,7 +211,7 @@ class SpeechEnhancementGAN(object):
 		return model
 
 	@staticmethod
-	def __build_adversarial(video_shape, audio_spectrogram_shape, generator, discriminator):
+	def __build_adversarial(video_shape, audio_spectrogram_shape, generator, discriminator, crossentropy_weight=1):
 		video_input = Input(shape=video_shape)
 
 		# append channels axis
@@ -221,18 +220,20 @@ class SpeechEnhancementGAN(object):
 
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 
-		label_output = discriminator(generator(inputs=[video_input, audio_input]))
-		model = Model(inputs=[video_input, audio_input], outputs=label_output)
+		generator_output = generator(inputs=[video_input, audio_input])
+		label_output = discriminator(generator_output)
+		model = Model(inputs=[video_input, audio_input], outputs=[generator_output, label_output])
 
 		optimizer = optimizers.adam(lr=0.001, decay=1e-6)
-		model.compile(loss='binary_crossentropy', optimizer=optimizer)
+		model.compile(loss=['mean_squared_error', 'binary_crossentropy'], loss_weights=[1, crossentropy_weight], optimizer=optimizer)
 
 		model.summary()
 		return model
 
-	def train(self, video, noisy_audio, clean_audio, model_cache_dir, tensorboard_dir, batch_size=32, n_epochs=100, n_epochs_per_model=2):
+	def train(self, video, noisy_audio, speech_spectrograms, model_cache_dir, tensorboard_dir, batch_size=16, n_epochs=100, n_epochs_per_model=2):
 		noisy_audio = np.expand_dims(noisy_audio, -1)  # append channels axis
-		clean_audio = np.expand_dims(clean_audio, -1)  # append channels axis
+		# clean_masks = np.expand_dims(clean_masks, -1)  # append channels axis
+		speech_spectrograms = np.expand_dims(speech_spectrograms, -1) # append channels axis
 
 		model_cache = ModelCache(model_cache_dir)
 		n_samples = video.shape[0]
@@ -240,37 +241,41 @@ class SpeechEnhancementGAN(object):
 		# tensorboard_callback = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 		# early_stopping_callback = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=1)
 
-		generator_checkpoint = ModelCheckpoint(
-			model_cache.generator_path(), monitor='loss', mode='min', save_best_only=True, verbose=1
-		)
+		# generator_checkpoint = ModelCheckpoint(
+		# 	model_cache.generator_path(), monitor='loss', mode='min', verbose=1
+		# )
 
 		adversarial_checkpoint = ModelCheckpoint(
-			model_cache.adversarial_path(), monitor='loss', mode='min', save_best_only=True, verbose=1
+			model_cache.adversarial_path(), monitor='loss', mode='min', verbose=1
 		)
 
 		discriminator_checkpoint = ModelCheckpoint(
-			model_cache.discriminator_path(), monitor='loss', mode='min', save_best_only=True, verbose=1
+			model_cache.discriminator_path(), monitor='loss', mode='min', verbose=1
 		)
 
 		for e in range(0, n_epochs, n_epochs_per_model):
 			print("training (epoch = %d) ..." % e)
 
-			print("training generator ...")
-			self.__generator.fit([video, noisy_audio], clean_audio,
-				batch_size=batch_size, epochs=n_epochs_per_model,
-				callbacks=[generator_checkpoint], verbose=1
-			)
+			# print("training generator ...")
+			# self.__generator.fit([video, noisy_audio], speech_spectrograms,
+			# 	batch_size=batch_size, epochs=n_epochs_per_model,
+			# 	callbacks=[generator_checkpoint], verbose=1
+			# )
 
 			permutation = np.random.permutation(n_samples)
 
 			video_samples = video[permutation[:(n_samples / 2)]]
 			noisy_audio_samples = noisy_audio[permutation[:(n_samples / 2)]]
 
-			generator_clean_audio = self.__generator.predict([video_samples, noisy_audio_samples])
+			# generated_clean_masks_not_binary = self.__generator.predict([video_samples, noisy_audio_samples])
+			# generated_clean_masks = np.round(generated_clean_masks_not_binary)
+			# generated_speech_spectrograms = noisy_audio_samples * generated_clean_masks
+
+			generated_speech_spectrograms, _ = self.__adversarial.predict([video_samples, noisy_audio_samples])
 
 			discriminator_input = np.concatenate((
-				generator_clean_audio,
-				clean_audio[permutation[(n_samples / 2):]]
+				generated_speech_spectrograms,
+				speech_spectrograms[permutation[(n_samples / 2):]]
 			))
 
 			discriminator_labels = np.concatenate((
@@ -291,7 +296,7 @@ class SpeechEnhancementGAN(object):
 				layer.trainable = False
 
 			print("training adversarial ...")
-			self.__adversarial.fit([video, noisy_audio], np.ones(n_samples),
+			self.__adversarial.fit([video, noisy_audio], [speech_spectrograms, np.ones(n_samples)],
 				batch_size=batch_size, epochs=n_epochs_per_model,
 				callbacks=[adversarial_checkpoint], verbose=1
 			)
@@ -299,23 +304,23 @@ class SpeechEnhancementGAN(object):
 	def predict(self, video, noisy_audio):
 		noisy_audio = np.expand_dims(noisy_audio, -1)  # append channels axis
 
-		clean_audio = self.__generator.predict([video, noisy_audio])
+		clean_audio, _ = self.__adversarial.predict([video, noisy_audio])
 		return np.squeeze(clean_audio)
 
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
 
-		generator = load_model(model_cache.generator_path())
+		# generator = load_model(model_cache.generator_path())
 		discriminator = load_model(model_cache.discriminator_path())
 		adversarial = load_model(model_cache.adversarial_path())
 
-		return SpeechEnhancementGAN(generator, discriminator, adversarial)
+		return SpeechEnhancementGAN(discriminator, adversarial)
 
 	def save(self, model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
 
-		self.__generator.save(model_cache.generator_path())
+		# self.__generator.save(model_cache.generator_path())
 		self.__discriminator.save(model_cache.discriminator_path())
 		self.__adversarial.save(model_cache.adversarial_path())
 
@@ -325,8 +330,8 @@ class ModelCache(object):
 	def __init__(self, cache_dir):
 		self.__cache_dir = cache_dir
 
-	def generator_path(self):
-		return os.path.join(self.__cache_dir, "generator.h5py")
+	# def generator_path(self):
+	# 	return os.path.join(self.__cache_dir, "generator.h5py")
 
 	def discriminator_path(self):
 		return os.path.join(self.__cache_dir, "discriminator.h5py")

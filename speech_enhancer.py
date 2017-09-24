@@ -17,7 +17,7 @@ def preprocess(args):
 		args.dataset_dir, speaker_ids, args.noise_dirs
 	)
 
-	mixed_audio_samples, speech_mask_audio_samples = data_processor.preprocess_audio_data(speech_file_paths, noise_file_paths)
+	mixed_audio_samples, speech_mask_audio_samples, speech_spectrograms = data_processor.preprocess_audio_data(speech_file_paths, noise_file_paths)
 	video_samples = data_processor.preprocess_video_data(video_file_paths)
 
 	normalization_data = data_processor.VideoDataNormalizer.normalize(video_samples)
@@ -27,7 +27,8 @@ def preprocess(args):
 		args.preprocessed_blob_path,
 		mixed_audio_samples=mixed_audio_samples,
 		speech_mask_audio_samples=speech_mask_audio_samples,
-		video_samples=video_samples
+		video_samples=video_samples,
+		speech_spectrograms=speech_spectrograms
 	)
 
 
@@ -36,20 +37,22 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 		mixed_audio_samples = data["mixed_audio_samples"]
 		speech_mask_audio_samples = data["speech_mask_audio_samples"]
 		video_samples = data["video_samples"]
+		speech_spectrograms = data["speech_spectrograms"]
 
 	permutation = np.random.permutation(video_samples.shape[0])
 	mixed_audio_samples = mixed_audio_samples[permutation]
 	speech_mask_audio_samples = speech_mask_audio_samples[permutation]
 	video_samples = video_samples[permutation]
+	speech_spectrograms = speech_spectrograms[permutation]
 
-	return mixed_audio_samples[:max_samples], speech_mask_audio_samples[:max_samples], video_samples[:max_samples]
+	return mixed_audio_samples[:max_samples], speech_mask_audio_samples[:max_samples], video_samples[:max_samples], speech_spectrograms[:max_samples]
 
 
 def train(args):
-	mixed_audio_samples, speech_mask_audio_samples, video_samples = load_preprocessed_samples(args.preprocessed_blob_path)
+	mixed_audio_samples, speech_mask_audio_samples, video_samples, speech_spectrograms = load_preprocessed_samples(args.preprocessed_blob_path)
 
 	network = SpeechEnhancementGAN.build(video_samples.shape[1:], mixed_audio_samples.shape[1:])
-	network.train(video_samples, mixed_audio_samples, speech_mask_audio_samples, args.model_cache_dir, args.tensorboard_dir)
+	network.train(video_samples, mixed_audio_samples, speech_spectrograms, args.model_cache_dir, args.tensorboard_dir)
 	network.save(args.model_cache_dir)
 
 
@@ -73,15 +76,15 @@ def predict(args):
 			try:
 				print("predicting %s..." % video_file_path)
 
-				mixed_audio_samples, speech_mask_audio_samples, mixed_signal = data_processor.preprocess_audio_pair(
+				mixed_audio_samples, speech_mask_audio_samples, mixed_signal, _ = data_processor.preprocess_audio_pair(
 					speech_file_path, noise_file_path
 				)
 
 				video_samples = data_processor.preprocess_video_sample(video_file_path)
 				data_processor.VideoDataNormalizer.apply_normalization(video_samples, normalization_data)
 
-				predicted_speech_masks = network.predict(video_samples, mixed_audio_samples)
-				predicted_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, predicted_speech_masks)
+				predicted_speech_spectrograms = network.predict(video_samples, mixed_audio_samples)
+				predicted_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, predicted_speech_spectrograms)
 
 				speech_name = os.path.splitext(os.path.basename(video_file_path))[0]
 				noise_name = os.path.splitext(os.path.basename(noise_file_path))[0]
