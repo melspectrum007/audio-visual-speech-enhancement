@@ -261,13 +261,16 @@ class SpeechEnhancementGAN(object):
 				callbacks=[generator_checkpoint], verbose=1
 			)
 
-			# TODO: maybe train the discriminator with generator outputs instead of real noisy samples?
+			permutation = np.random.permutation(n_samples)
 
-			ind = np.random.permutation(n_samples)
+			video_samples = video[permutation[:(n_samples / 2)]]
+			noisy_audio_samples = noisy_audio[permutation[:(n_samples / 2)]]
+
+			generator_clean_audio = self.__generator.predict([video_samples, noisy_audio_samples])
 
 			discriminator_input = np.concatenate((
-				noisy_audio[ind[:(n_samples / 2)]],
-				clean_audio[ind[(n_samples / 2):]]
+				generator_clean_audio,
+				clean_audio[permutation[(n_samples / 2):]]
 			))
 
 			discriminator_labels = np.concatenate((
