@@ -79,16 +79,14 @@ def preprocess_audio_pair(speech_file_path, noise_file_path):
 	speech_masks = np.zeros(shape=mixed_spectrograms.shape)
 	speech_masks[speech_spectrograms > noise_spectrograms] = 1
 
-	return mixed_spectrograms, speech_masks, mixed_signal, speech_spectrograms
+	return mixed_spectrograms, speech_masks, speech_spectrograms, mixed_signal
 
 
 def reconstruct_speech_signal(mixed_signal, speech_spectrograms):
 	mel_converter = MelConverter(mixed_signal.get_sample_rate(), n_mel_freqs=128, freq_min_hz=0, freq_max_hz=4000)
+	_, original_phase = mel_converter.signal_to_mel_spectrogram(mixed_signal, get_phase=True)
 
-	mixed_spectrogram, original_phase = mel_converter.signal_to_mel_spectrogram(mixed_signal, get_phase=True)
-
-	speech_spectrograms = [speech_spectrograms[i] for i in range(speech_spectrograms.shape[0])]
-	speech_spectrogram = np.concatenate(speech_spectrograms, axis=1)
+	speech_spectrogram = np.concatenate(list(speech_spectrograms), axis=1)
 
 	spectrogram_length = min(speech_spectrogram.shape[1], original_phase.shape[1])
 	speech_spectrogram = speech_spectrogram[:, :spectrogram_length]
@@ -105,11 +103,11 @@ def preprocess_audio_data(speech_file_paths, noise_file_paths):
 	thread_pool = multiprocess.Pool(8)
 	preprocessed_pairs = thread_pool.map(lambda pair: preprocess_audio_pair(pair[0], pair[1]), audio_pairs)
 
-	mixed_samples = [p[0] for p in preprocessed_pairs]
-	speech_mask_samples = [p[1] for p in preprocessed_pairs]
-	speech_spectograms = [p[3] for p in preprocessed_pairs]
+	mixed_spectrograms = [p[0] for p in preprocessed_pairs]
+	speech_masks = [p[1] for p in preprocessed_pairs]
+	speech_spectrograms = [p[2] for p in preprocessed_pairs]
 
-	return np.concatenate(mixed_samples), np.concatenate(speech_mask_samples), np.concatenate(speech_spectograms)
+	return np.concatenate(mixed_spectrograms), np.concatenate(speech_masks), np.concatenate(speech_spectrograms)
 
 
 def preprocess_video_data(video_file_paths):
