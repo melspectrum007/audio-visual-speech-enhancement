@@ -42,117 +42,103 @@ class SpeechEnhancementGAN(object):
 
 		x = concatenate([x_video, x_audio])
 
-		x = Dense(4096, kernel_initializer='he_normal', name='g-av-dense1')(x)
+		x = Dense(512)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		x = Dense(4096, kernel_initializer='he_normal', name='g-av-dense2')(x)
+		x = Dense(512)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		x = Dense(
-			audio_spectrogram_shape[0] * audio_spectrogram_shape[1],
-			kernel_initializer='he_normal', name='g-av-dense-output'
-		)(x)
+		# TODO: Deconvolutions?
 
-		audio_output = Reshape(extended_audio_spectrogram_shape, name='g-av-reshape-output')(x)
+		x = Dense(audio_spectrogram_shape[0] * audio_spectrogram_shape[1])(x)
+
+		audio_output = Reshape(extended_audio_spectrogram_shape)(x)
 
 		model = Model(inputs=[video_input, audio_input], outputs=audio_output)
-
-		# optimizer = optimizers.adam(lr=0.001, decay=1e-6)
-		# model.compile(loss='mean_squared_error', optimizer=optimizer)
-
 		model.summary()
+
 		return model
 
 	@classmethod
 	def __build_video_encoder(cls, video_input):
-		x = ZeroPadding3D(padding=(1, 2, 2), name='g-v-zero1')(video_input)
-		x = Convolution3D(32, (3, 5, 5), strides=(1, 2, 2), kernel_initializer='he_normal', name='g-v-conv1')(x)
+		x = ZeroPadding3D(padding=(1, 2, 2))(video_input)
+		x = Convolution3D(32, (3, 5, 5), strides=(1, 2, 2))(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2), name='g-v-max1')(x)
+		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2))(x)
 		x = Dropout(0.25)(x)
 
-		x = ZeroPadding3D(padding=(1, 2, 2), name='g-v-zero2')(x)
-		x = Convolution3D(64, (3, 5, 5), strides=(1, 1, 1), kernel_initializer='he_normal', name='g-v-conv2')(x)
+		x = ZeroPadding3D(padding=(1, 2, 2))(x)
+		x = Convolution3D(64, (3, 5, 5), strides=(1, 1, 1))(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2), name='g-v-max2')(x)
+		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2))(x)
 		x = Dropout(0.25)(x)
 
-		x = ZeroPadding3D(padding=(1, 1, 1), name='g-v-zero3')(x)
-		x = Convolution3D(128, (3, 3, 3), strides=(1, 1, 1), kernel_initializer='he_normal', name='g-v-conv3')(x)
+		x = ZeroPadding3D(padding=(1, 1, 1))(x)
+		x = Convolution3D(128, (3, 3, 3), strides=(1, 1, 1))(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2), name='g-v-max3')(x)
+		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2))(x)
 		x = Dropout(0.25)(x)
 
-		x = TimeDistributed(Flatten(), name='g-v-time')(x)
+		x = TimeDistributed(Flatten())(x)
 
-		x = Dense(1024, kernel_initializer='he_normal', name='g-v-dense1')(x)
+		x = Dense(1024)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		x = Dense(1024, kernel_initializer='he_normal', name='g-v-dense2')(x)
+		x = Dense(1024)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
 		x = Flatten()(x)
 
-		x = Dense(2048, kernel_initializer='he_normal', name='g-v-dense3')(x)
+		x = Dense(2048)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		x = Dense(2048, kernel_initializer='he_normal', name='g-v-dense4')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.25)(x)
+		x = Dense(2048)(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		# x = Dropout(0.25)(x)
 
 		return x
 
 	@classmethod
 	def __build_audio_encoder(cls, audio_input):
-		x = Convolution2D(32, (3, 3), kernel_initializer='he_normal', name='g-a-conv1')(audio_input)
+		x = Convolution2D(1, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name='g-a-max1')(x)
-		x = Dropout(0.25)(x)
 
-		x = Convolution2D(64, (3, 3), kernel_initializer='he_normal', name='g-a-conv2')(x)
+		x = Convolution2D(1, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name='g-a-max2')(x)
-		x = Dropout(0.25)(x)
 
-		x = Convolution2D(128, (3, 3), kernel_initializer='he_normal', name='g-a-conv3')(x)
+		x = Convolution2D(2, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name='g-a-max3')(x)
-		x = Dropout(0.25)(x)
 
-		x = Convolution2D(128, (3, 3), kernel_initializer='he_normal', name='g-a-conv4')(x)
+		x = Convolution2D(4, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name='g-a-max4')(x)
-		x = Dropout(0.25)(x)
+
+		x = Convolution2D(4, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(8, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
 
 		x = Flatten()(x)
-
-		x = Dense(2048, kernel_initializer='he_normal', name='g-a-dense1')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.25)(x)
-
-		x = Dense(2048, kernel_initializer='he_normal', name='g-a-dense2')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.25)(x)
 
 		return x
 
@@ -164,43 +150,43 @@ class SpeechEnhancementGAN(object):
 
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 
-		x = Convolution2D(32, (3, 3), kernel_initializer='he_normal', name='d-a-conv1')(audio_input)
+		x = Convolution2D(1, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name='d-a-max1')(x)
-		x = Dropout(0.25)(x)
 
-		x = Convolution2D(64, (3, 3), kernel_initializer='he_normal', name='d-a-conv2')(x)
+		x = Convolution2D(1, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name='d-a-max2')(x)
-		x = Dropout(0.25)(x)
 
-		x = Convolution2D(128, (3, 3), kernel_initializer='he_normal', name='d-a-conv3')(x)
+		x = Convolution2D(2, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name='d-a-max3')(x)
-		x = Dropout(0.25)(x)
 
-		x = Convolution2D(128, (3, 3), kernel_initializer='he_normal', name='d-a-conv4')(x)
+		x = Convolution2D(4, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), name='d-a-max4')(x)
-		x = Dropout(0.25)(x)
+
+		x = Convolution2D(4, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(8, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
 
 		x = Flatten()(x)
 
-		x = Dense(2048, kernel_initializer='he_normal', name='d-a-dense1')(x)
+		x = Dense(32)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		x = Dense(2048, kernel_initializer='he_normal', name='d-a-dense2')(x)
+		x = Dense(32)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		label_output = Dense(1, activation='sigmoid', kernel_initializer='he_normal', name='d-a-output')(x)
+		label_output = Dense(1, activation='sigmoid')(x)
 
 		model = Model(inputs=audio_input, outputs=label_output)
 
@@ -243,6 +229,9 @@ class SpeechEnhancementGAN(object):
 		[video_samples_train, mixed_spectrograms_train, speech_spectrograms_train] = train_data
 		[video_samples_validation, mixed_spectrograms_validation, speech_spectrograms_validation] = validation_data
 
+		n_samples_train = video_samples_train.shape[0]
+		n_samples_validation = video_samples_validation.shape[0]
+
 		# tensorboard_callback = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 		# early_stopping_callback = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=1)
 
@@ -253,16 +242,15 @@ class SpeechEnhancementGAN(object):
 		for e in range(0, n_epochs, n_epochs_per_model):
 			print("training (epoch = %d) ..." % e)
 
-			n_samples = video_samples_train.shape[0]
-			permutation = np.random.permutation(n_samples)
-			video_samples_subset = video_samples_train[permutation[:(n_samples / 2)]]
-			mixed_spectrograms_subset = mixed_spectrograms_train[permutation[:(n_samples / 2)]]
-			real_speech_spectrograms = speech_spectrograms_train[permutation[(n_samples / 2):]]
+			permutation = np.random.permutation(n_samples_train)
+			video_samples_subset = video_samples_train[permutation[:(n_samples_train / 2)]]
+			mixed_spectrograms_subset = mixed_spectrograms_train[permutation[:(n_samples_train / 2)]]
+			real_speech_spectrograms = speech_spectrograms_train[permutation[(n_samples_train / 2):]]
 
 			generated_speech_spectrograms, _ = self.__adversarial.predict([video_samples_subset, mixed_spectrograms_subset])
 
 			discriminator_samples = np.concatenate((generated_speech_spectrograms, real_speech_spectrograms))
-			discriminator_labels = np.concatenate((np.zeros(n_samples / 2), np.ones(n_samples / 2)))
+			discriminator_labels = np.concatenate((np.zeros(n_samples_train / 2), np.ones(n_samples_train / 2)))
 
 			print("training discriminator ...")
 			for layer in self.__discriminator.layers:
@@ -279,11 +267,11 @@ class SpeechEnhancementGAN(object):
 
 			self.__adversarial.fit(
 				x=[video_samples_train, mixed_spectrograms_train],
-				y=[speech_spectrograms_train, np.ones(n_samples)],
+				y=[speech_spectrograms_train, np.ones(n_samples_train)],
 
 				validation_data=(
 					[video_samples_validation, mixed_spectrograms_validation],
-					[speech_spectrograms_validation, np.ones(n_samples)]
+					[speech_spectrograms_validation, np.ones(n_samples_validation)]
 				),
 
 				batch_size=batch_size, epochs=n_epochs_per_model,
