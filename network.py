@@ -231,10 +231,17 @@ class SpeechEnhancementGAN(object):
 		return model
 
 	def train(self, video_samples, mixed_spectrograms, speech_spectrograms,
-			  model_cache_dir, tensorboard_dir, batch_size=32, n_epochs=200, n_epochs_per_model=2):
+			  model_cache_dir, tensorboard_dir, validation_split=0.1, batch_size=32, n_epochs=200, n_epochs_per_model=2):
 
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
 		speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
+
+		train_data, validation_data = self.__split_train_validation_data(
+			[video_samples, mixed_spectrograms, speech_spectrograms], validation_split
+		)
+
+		[video_samples_train, mixed_spectrograms_train, speech_spectrograms_train] = train_data
+		[video_samples_validation, mixed_spectrograms_validation, speech_spectrograms_validation] = validation_data
 
 		# tensorboard_callback = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 		# early_stopping_callback = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=1)
@@ -246,23 +253,16 @@ class SpeechEnhancementGAN(object):
 		for e in range(0, n_epochs, n_epochs_per_model):
 			print("training (epoch = %d) ..." % e)
 
-			n_samples = video_samples.shape[0]
-
+			n_samples = video_samples_train.shape[0]
 			permutation = np.random.permutation(n_samples)
-			video_samples_subset = video_samples[permutation[:(n_samples / 2)]]
-			mixed_spectrograms_subset = mixed_spectrograms[permutation[:(n_samples / 2)]]
+			video_samples_subset = video_samples_train[permutation[:(n_samples / 2)]]
+			mixed_spectrograms_subset = mixed_spectrograms_train[permutation[:(n_samples / 2)]]
+			real_speech_spectrograms = speech_spectrograms_train[permutation[(n_samples / 2):]]
 
 			generated_speech_spectrograms, _ = self.__adversarial.predict([video_samples_subset, mixed_spectrograms_subset])
 
-			discriminator_samples = np.concatenate((
-				generated_speech_spectrograms,
-				speech_spectrograms[permutation[(n_samples / 2):]]
-			))
-
-			discriminator_labels = np.concatenate((
-				np.zeros(n_samples / 2),
-				np.ones(n_samples / 2)
-			))
+			discriminator_samples = np.concatenate((generated_speech_spectrograms, real_speech_spectrograms))
+			discriminator_labels = np.concatenate((np.zeros(n_samples / 2), np.ones(n_samples / 2)))
 
 			print("training discriminator ...")
 			for layer in self.__discriminator.layers:
@@ -277,7 +277,15 @@ class SpeechEnhancementGAN(object):
 			for layer in self.__discriminator.layers:
 				layer.trainable = False
 
-			self.__adversarial.fit([video_samples, mixed_spectrograms], [speech_spectrograms, np.ones(n_samples)],
+			self.__adversarial.fit(
+				x=[video_samples_train, mixed_spectrograms_train],
+				y=[speech_spectrograms_train, np.ones(n_samples)],
+
+				validation_data=(
+					[video_samples_validation, mixed_spectrograms_validation],
+					[speech_spectrograms_validation, np.ones(n_samples)]
+				),
+
 				batch_size=batch_size, epochs=n_epochs_per_model,
 				callbacks=[adversarial_checkpoint], verbose=1
 			)
@@ -302,6 +310,19 @@ class SpeechEnhancementGAN(object):
 
 		self.__discriminator.save(model_cache.discriminator_path())
 		self.__adversarial.save(model_cache.adversarial_path())
+
+	@staticmethod
+	def __split_train_validation_data(arrays, validation_split):
+		n_samples = arrays[0].shape[0]
+		permutation = np.random.permutation(n_samples)
+		validation_size = int(validation_split * n_samples)
+		validation_indices = permutation[:validation_size]
+		train_indices = permutation[validation_size:]
+
+		train_arrays = [a[train_indices] for a in arrays]
+		validation_arrays = [a[validation_indices] for a in arrays]
+
+		return train_arrays, validation_arrays
 
 
 class ModelCache(object):
