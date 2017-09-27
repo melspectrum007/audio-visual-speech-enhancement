@@ -2,20 +2,19 @@ import os
 
 from keras import optimizers
 from keras.layers import Input, Dense, Convolution3D, MaxPooling3D, ZeroPadding3D
-from keras.layers import Convolution2D, MaxPooling2D, ZeroPadding2D
-from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
+from keras.layers import Convolution2D, Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
 from keras.layers.merge import concatenate
 from keras.layers.wrappers import TimeDistributed
 from keras.models import Model, load_model
-from keras.callbacks import Callback, TensorBoard, EarlyStopping, ModelCheckpoint
-from keras import backend as K
+from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
 
 import numpy as np
 
 
 class SpeechEnhancementGAN(object):
 
-	def __init__(self, discriminator, adversarial):
+	def __init__(self, generator, discriminator, adversarial):
+		self.__generator = generator
 		self.__discriminator = discriminator
 		self.__adversarial = adversarial
 
@@ -25,7 +24,7 @@ class SpeechEnhancementGAN(object):
 		discriminator = cls.__build_discriminator(audio_spectrogram_shape)
 		adversarial = cls.__build_adversarial(video_shape, audio_spectrogram_shape, generator, discriminator)
 
-		return SpeechEnhancementGAN(discriminator, adversarial)
+		return SpeechEnhancementGAN(generator, discriminator, adversarial)
 
 	@classmethod
 	def __build_generator(cls, video_shape, audio_spectrogram_shape):
@@ -281,21 +280,23 @@ class SpeechEnhancementGAN(object):
 	def predict(self, video_samples, mixed_spectrograms):
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
 
-		speech_spectrograms, _ = self.__adversarial.predict([video_samples, mixed_spectrograms])
+		speech_spectrograms = self.__generator.predict([video_samples, mixed_spectrograms])
 		return np.squeeze(speech_spectrograms)
 
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
 
+		generator = load_model(model_cache.generator_path())
 		discriminator = load_model(model_cache.discriminator_path())
 		adversarial = load_model(model_cache.adversarial_path())
 
-		return SpeechEnhancementGAN(discriminator, adversarial)
+		return SpeechEnhancementGAN(generator, discriminator, adversarial)
 
 	def save(self, model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
 
+		self.__generator.save(model_cache.generator_path())
 		self.__discriminator.save(model_cache.discriminator_path())
 		self.__adversarial.save(model_cache.adversarial_path())
 
@@ -317,6 +318,9 @@ class ModelCache(object):
 
 	def __init__(self, cache_dir):
 		self.__cache_dir = cache_dir
+
+	def generator_path(self):
+		return os.path.join(self.__cache_dir, "generator.h5py")
 
 	def discriminator_path(self):
 		return os.path.join(self.__cache_dir, "discriminator.h5py")
