@@ -13,43 +13,49 @@ from network import SpeechEnhancementGAN
 def preprocess(args):
 	speaker_ids = list_speakers(args)
 
-	speech_file_paths, video_file_paths, noise_file_paths = list_data(
+	video_file_paths, speech_file_paths, noise_file_paths = list_data(
 		args.dataset_dir, speaker_ids, args.noise_dirs
 	)
 
-	mixed_spectrograms, speech_masks, speech_spectrograms = data_processor.preprocess_audio_data(speech_file_paths, noise_file_paths)
-	video_samples = data_processor.preprocess_video_data(video_file_paths)
+	video_samples, mixed_spectrograms, speech_masks, speech_spectrograms = data_processor.preprocess_data(
+		video_file_paths, speech_file_paths, noise_file_paths
+	)
 
 	normalization_data = data_processor.VideoDataNormalizer.normalize(video_samples)
 	normalization_data.save(args.normalization_cache)
 
 	np.savez(
 		args.preprocessed_blob_path,
+		video_samples=video_samples,
 		mixed_spectrograms=mixed_spectrograms,
 		speech_masks=speech_masks,
-		speech_spectrograms=speech_spectrograms,
-		video_samples=video_samples
+		speech_spectrograms=speech_spectrograms
 	)
 
 
 def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 	with np.load(preprocessed_blob_path) as data:
+		video_samples = data["video_samples"]
 		mixed_spectrograms = data["mixed_spectrograms"]
 		speech_masks = data["speech_masks"]
 		speech_spectrograms = data["speech_spectrograms"]
-		video_samples = data["video_samples"]
 
 	permutation = np.random.permutation(video_samples.shape[0])
+	video_samples = video_samples[permutation]
 	mixed_spectrograms = mixed_spectrograms[permutation]
 	speech_masks = speech_masks[permutation]
 	speech_spectrograms = speech_spectrograms[permutation]
-	video_samples = video_samples[permutation]
 
-	return mixed_spectrograms[:max_samples], speech_masks[:max_samples], speech_spectrograms[:max_samples], video_samples[:max_samples]
+	return (
+		video_samples[:max_samples],
+		mixed_spectrograms[:max_samples],
+		speech_masks[:max_samples],
+		speech_spectrograms[:max_samples]
+	)
 
 
 def train(args):
-	mixed_spectrograms, speech_masks, speech_spectrograms, video_samples = load_preprocessed_samples(args.preprocessed_blob_path)
+	video_samples, mixed_spectrograms, speech_masks, speech_spectrograms = load_preprocessed_samples(args.preprocessed_blob_path)
 
 	network = SpeechEnhancementGAN.build(video_samples.shape[1:], mixed_spectrograms.shape[1:])
 	network.train(video_samples, mixed_spectrograms, speech_spectrograms, args.model_cache_dir, args.tensorboard_dir)
@@ -68,23 +74,23 @@ def predict(args):
 		speaker_prediction_dir = os.path.join(prediction_output_dir, speaker_id)
 		os.mkdir(speaker_prediction_dir)
 
-		speech_file_paths, video_file_paths, noise_file_paths = list_data(
+		video_file_paths, speech_file_paths, noise_file_paths = list_data(
 			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5
 		)
 
-		for speech_file_path, video_file_path, noise_file_path in zip(speech_file_paths, video_file_paths, noise_file_paths):
+		for video_file_path, speech_file_path, noise_file_path in zip(video_file_paths, speech_file_paths, noise_file_paths):
 			try:
 				print("predicting %s..." % video_file_path)
-
-				mixed_spectrograms, _, _, mixed_signal = data_processor.preprocess_audio_pair(
-					speech_file_path, noise_file_path
+				video_samples, mixed_spectrograms, speech_masks, speech_spectrograms, mixed_signal, video_frame_rate = data_processor.preprocess_sample(
+					video_file_path, speech_file_path, noise_file_path
 				)
 
-				video_samples = data_processor.preprocess_video_sample(video_file_path)
 				data_processor.VideoDataNormalizer.apply_normalization(video_samples, normalization_data)
 
 				predicted_speech_spectrograms = network.predict(video_samples, mixed_spectrograms)
-				predicted_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, predicted_speech_spectrograms)
+				predicted_speech_signal = data_processor.reconstruct_speech_signal(
+					mixed_signal, predicted_speech_spectrograms, video_frame_rate
+				)
 
 				speech_name = os.path.splitext(os.path.basename(video_file_path))[0]
 				noise_name = os.path.splitext(os.path.basename(noise_file_path))[0]
@@ -122,7 +128,7 @@ def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None):
 
 	n_files = min(speech_subset.size(), len(noise_file_paths))
 
-	return speech_subset.audio_paths()[:n_files], speech_subset.video_paths()[:n_files], noise_file_paths[:n_files]
+	return speech_subset.video_paths()[:n_files], speech_subset.audio_paths()[:n_files], noise_file_paths[:n_files]
 
 
 def main():
@@ -158,6 +164,7 @@ def main():
 
 	args = parser.parse_args()
 	args.func(args)
+
 
 if __name__ == "__main__":
 	main()

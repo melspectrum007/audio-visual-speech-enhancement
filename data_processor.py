@@ -1,4 +1,3 @@
-import math
 import multiprocess
 import pickle
 
@@ -10,51 +9,45 @@ from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
 
 
-def preprocess_video_sample(video_file_path, slice_duration_ms=330, mouth_height=50, mouth_width=100):
+def preprocess_video_sample(video_file_path, slice_duration_ms, mouth_height=128, mouth_width=128):
 	print("preprocessing %s" % video_file_path)
 
 	face_detector = FaceDetector()
 
 	with VideoFileReader(video_file_path) as reader:
-		frames = reader.read_all_frames()
+		frames = reader.read_all_frames(convert_to_gray_scale=True)
 
-		mouth_cropped_frames = np.zeros(shape=(reader.get_frame_count(), mouth_height, mouth_width, 3), dtype=np.float32)
+		mouth_cropped_frames = np.zeros(shape=(mouth_height, mouth_width, reader.get_frame_count()), dtype=np.float32)
 		for i in range(reader.get_frame_count()):
-			mouth_cropped_frames[i, :] = face_detector.crop_mouth(frames[i, :], bounding_box_shape=(mouth_width, mouth_height))
+			mouth_cropped_frames[:, :, i] = face_detector.crop_mouth(frames[i], bounding_box_shape=(mouth_width, mouth_height))
 
-		frames_per_slice = (float(slice_duration_ms) / 1000) * reader.get_frame_rate()
+		frames_per_slice = int((float(slice_duration_ms) / 1000) * reader.get_frame_rate())
 		n_slices = int(float(reader.get_frame_count()) / frames_per_slice)
 
 		slices = [
-			mouth_cropped_frames[int(i * frames_per_slice) : int(math.ceil((i + 1) * frames_per_slice))]
+			mouth_cropped_frames[:, :, (i * frames_per_slice):((i + 1) * frames_per_slice)]
 			for i in range(n_slices)
 		]
 
-		return np.stack(slices)
+		return np.stack(slices), reader.get_frame_rate()
 
 
-def try_preprocess_video_sample(video_file_path):
-	try:
-		return preprocess_video_sample(video_file_path)
+def preprocess_audio_signal(audio_signal, slice_duration_ms, n_video_slices, video_frame_rate):
+	samples_per_slice = int((float(slice_duration_ms) / 1000) * audio_signal.get_sample_rate())
+	signal_length = samples_per_slice * n_video_slices
 
-	except Exception as e:
-		print("failed to preprocess %s (%s)" % (video_file_path, e))
-		return None
+	if audio_signal.get_number_of_samples() < signal_length:
+		audio_signal.pad_with_zeros(signal_length)
+	else:
+		audio_signal.truncate(signal_length)
 
+	n_fft = int(float(audio_signal.get_sample_rate()) / video_frame_rate)
+	hop_length = int(n_fft / 4)
 
-def preprocess_audio_signal(audio_signal, slice_duration_ms=330):
-	new_signal_length = int(math.ceil(
-		float(audio_signal.get_number_of_samples()) / MelConverter.HOP_LENGTH
-	)) * MelConverter.HOP_LENGTH
-
-	audio_signal.pad_with_zeros(new_signal_length)
-
-	mel_converter = MelConverter(audio_signal.get_sample_rate(), n_mel_freqs=128, freq_min_hz=0, freq_max_hz=4000)
+	mel_converter = MelConverter(audio_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=80, freq_min_hz=0, freq_max_hz=8000)
 	mel_spectrogram = mel_converter.signal_to_mel_spectrogram(audio_signal)
 
-	samples_per_slice = int((float(slice_duration_ms) / 1000) * audio_signal.get_sample_rate())
-	spectrogram_samples_per_slice = int(samples_per_slice / MelConverter.HOP_LENGTH)
-
+	spectrogram_samples_per_slice = int(samples_per_slice / hop_length)
 	n_slices = int(mel_spectrogram.shape[1] / spectrogram_samples_per_slice)
 
 	slices = [
@@ -65,25 +58,11 @@ def preprocess_audio_signal(audio_signal, slice_duration_ms=330):
 	return np.stack(slices)
 
 
-def preprocess_audio_pair(speech_file_path, noise_file_path):
-	print("preprocessing pair: %s, %s" % (speech_file_path, noise_file_path))
+def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rate):
+	n_fft = int(float(mixed_signal.get_sample_rate()) / video_frame_rate)
+	hop_length = int(n_fft / 4)
 
-	speech_signal = AudioSignal.from_wav_file(speech_file_path)
-	noise_signal = AudioSignal.from_wav_file(noise_file_path)
-	mixed_signal = AudioMixer.mix([speech_signal, noise_signal])
-
-	speech_spectrograms = preprocess_audio_signal(speech_signal)
-	noise_spectrograms = preprocess_audio_signal(noise_signal)
-	mixed_spectrograms = preprocess_audio_signal(mixed_signal)
-
-	speech_masks = np.zeros(shape=mixed_spectrograms.shape)
-	speech_masks[speech_spectrograms > noise_spectrograms] = 1
-
-	return mixed_spectrograms, speech_masks, speech_spectrograms, mixed_signal
-
-
-def reconstruct_speech_signal(mixed_signal, speech_spectrograms):
-	mel_converter = MelConverter(mixed_signal.get_sample_rate(), n_mel_freqs=128, freq_min_hz=0, freq_max_hz=4000)
+	mel_converter = MelConverter(mixed_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=80, freq_min_hz=0, freq_max_hz=8000)
 	_, original_phase = mel_converter.signal_to_mel_spectrogram(mixed_signal, get_phase=True)
 
 	speech_spectrogram = np.concatenate(list(speech_spectrograms), axis=1)
@@ -95,31 +74,72 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms):
 	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, original_phase)
 
 
-def preprocess_audio_data(speech_file_paths, noise_file_paths):
-	print("preprocessing audio data...")
+def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate):
+	print("preprocessing pair: %s, %s" % (speech_file_path, noise_file_path))
 
-	audio_pairs = zip(speech_file_paths, noise_file_paths)
+	speech_signal = AudioSignal.from_wav_file(speech_file_path)
+	noise_signal = AudioSignal.from_wav_file(noise_file_path)
+	mixed_signal = AudioMixer.mix([speech_signal, noise_signal])
+
+	speech_spectrograms = preprocess_audio_signal(speech_signal, slice_duration_ms, n_video_slices, video_frame_rate)
+	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate)
+	mixed_spectrograms = preprocess_audio_signal(mixed_signal, slice_duration_ms, n_video_slices, video_frame_rate)
+
+	speech_masks = np.zeros(shape=mixed_spectrograms.shape)
+	speech_masks[speech_spectrograms > noise_spectrograms] = 1
+
+	return mixed_spectrograms, speech_masks, speech_spectrograms, mixed_signal
+
+
+def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_duration_ms=200):
+	print("preprocessing sample: %s, %s, %s..." % (video_file_path, speech_file_path, noise_file_path))
+
+	video_samples, video_frame_rate = preprocess_video_sample(video_file_path, slice_duration_ms)
+	mixed_spectrograms, speech_masks, speech_spectrograms, mixed_signal = preprocess_audio_pair(
+		speech_file_path, noise_file_path, slice_duration_ms, video_samples.shape[0], video_frame_rate
+	)
+
+	n_slices = min(video_samples.shape[0], mixed_spectrograms.shape[0])
+
+	return (
+		video_samples[:n_slices],
+		mixed_spectrograms[:n_slices],
+		speech_masks[:n_slices],
+		speech_spectrograms[:n_slices],
+		mixed_signal,
+		video_frame_rate
+	)
+
+
+def try_preprocess_sample(sample):
+	try:
+		return preprocess_sample(*sample)
+
+	except Exception as e:
+		print("failed to preprocess %s (%s)" % (sample, e))
+		return None
+
+
+def preprocess_data(video_file_paths, speech_file_paths, noise_file_paths):
+	print("preprocessing data...")
+
+	samples = zip(video_file_paths, speech_file_paths, noise_file_paths)
 
 	thread_pool = multiprocess.Pool(8)
-	preprocessed_pairs = thread_pool.map(lambda pair: preprocess_audio_pair(pair[0], pair[1]), audio_pairs)
+	preprocessed = thread_pool.map(try_preprocess_sample, samples)
+	preprocessed = [p for p in preprocessed if p is not None]
 
-	mixed_spectrograms = [p[0] for p in preprocessed_pairs]
-	speech_masks = [p[1] for p in preprocessed_pairs]
-	speech_spectrograms = [p[2] for p in preprocessed_pairs]
+	video_samples = [p[0] for p in preprocessed]
+	mixed_spectrograms = [p[1] for p in preprocessed]
+	speech_masks = [p[2] for p in preprocessed]
+	speech_spectrograms = [p[3] for p in preprocessed]
 
-	return np.concatenate(mixed_spectrograms), np.concatenate(speech_masks), np.concatenate(speech_spectrograms)
-
-
-def preprocess_video_data(video_file_paths):
-	print("preprocessing video data...")
-
-	thread_pool = multiprocess.Pool(8)
-	video_samples = thread_pool.map(try_preprocess_video_sample, video_file_paths)
-
-	invalid_sample_ids = [i for i, sample in enumerate(video_samples) if sample is None]
-	video_samples = [sample for i, sample in enumerate(video_samples) if i not in invalid_sample_ids]
-
-	return np.concatenate(video_samples)
+	return (
+		np.concatenate(video_samples),
+		np.concatenate(mixed_spectrograms),
+		np.concatenate(speech_masks),
+		np.concatenate(speech_spectrograms)
+	)
 
 
 class VideoDataNormalizer(object):
@@ -134,22 +154,20 @@ class VideoDataNormalizer(object):
 	@classmethod
 	def apply_normalization(cls, video_samples, normalization_data):
 		video_samples /= 255
-
-		for channel in range(3):
-			video_samples[:, :, :, :, channel] -= normalization_data.channel_means[channel]
+		video_samples -= normalization_data.mean
 
 	@staticmethod
 	def __init_normalization_data(video_samples):
-		# video_samples: slices x frames_per_slice x height x width x channels
-		channel_means = [video_samples[:, :, :, :, channel].mean() / 255 for channel in range(3)]
+		# video_samples: slices x height x width x frames_per_slice
+		mean = video_samples.mean() / 255
 
-		return VideoNormalizationData(channel_means)
+		return VideoNormalizationData(mean)
 
 
 class VideoNormalizationData(object):
 
-	def __init__(self, channel_means):
-		self.channel_means = channel_means
+	def __init__(self, mean):
+		self.mean = mean
 
 	def save(self, path):
 		with open(path, 'wb') as normalization_fd:
