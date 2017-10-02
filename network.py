@@ -1,10 +1,9 @@
 import os
 
 from keras import optimizers
-from keras.layers import Input, Dense, Convolution3D, MaxPooling3D, ZeroPadding3D
-from keras.layers import Convolution2D, Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
+from keras.layers import Input, Dense, Convolution2D, MaxPooling2D
+from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
 from keras.layers.merge import concatenate
-from keras.layers.wrappers import TimeDistributed
 from keras.models import Model, load_model
 from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
 
@@ -41,15 +40,20 @@ class SpeechEnhancementGAN(object):
 
 		x = concatenate([x_video, x_audio])
 
-		x = Dense(512)(x)
+		x = Dense(2048)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = Dropout(0.25)(x)
+		x = Dropout(0.5)(x)
 
-		x = Dense(512)(x)
+		x = Dense(2048)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = Dropout(0.25)(x)
+		x = Dropout(0.5)(x)
+
+		x = Dense(2048)(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+		x = Dropout(0.5)(x)
 
 		# TODO: Deconvolutions?
 
@@ -58,56 +62,55 @@ class SpeechEnhancementGAN(object):
 		audio_output = Reshape(extended_audio_spectrogram_shape)(x)
 
 		model = Model(inputs=[video_input, audio_input], outputs=audio_output)
+
+		optimizer = optimizers.adam(lr=0.001, decay=1e-6)
+		model.compile(loss='mean_squared_error', optimizer=optimizer)
+
 		model.summary()
 
 		return model
 
 	@classmethod
 	def __build_video_encoder(cls, video_input):
-		x = ZeroPadding3D(padding=(1, 2, 2))(video_input)
-		x = Convolution3D(32, (3, 5, 5), strides=(1, 2, 2))(x)
+		x = Convolution2D(128, kernel_size=(5, 5), padding='same')(video_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2))(x)
+		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = ZeroPadding3D(padding=(1, 2, 2))(x)
-		x = Convolution3D(64, (3, 5, 5), strides=(1, 1, 1))(x)
+		x = Convolution2D(128, kernel_size=(5, 5), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2))(x)
+		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = ZeroPadding3D(padding=(1, 1, 1))(x)
-		x = Convolution3D(128, (3, 3, 3), strides=(1, 1, 1))(x)
+		x = Convolution2D(256, kernel_size=(3, 3), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2))(x)
+		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = TimeDistributed(Flatten())(x)
-
-		x = Dense(1024)(x)
+		x = Convolution2D(256, kernel_size=(3, 3), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
+		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Dense(1024)(x)
+		x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
+		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
 		x = Dropout(0.25)(x)
+
+		x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
+		x = Dropout(0.25)(x)
+
+		x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
 
 		x = Flatten()(x)
-
-		x = Dense(2048)(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.25)(x)
-
-		x = Dense(2048)(x)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
-		# x = Dropout(0.25)(x)
 
 		return x
 
@@ -117,7 +120,7 @@ class SpeechEnhancementGAN(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(1, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Convolution2D(1, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -125,17 +128,15 @@ class SpeechEnhancementGAN(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(4, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Convolution2D(4, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(4, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Convolution2D(4, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
 		x = Convolution2D(8, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
 
 		x = Flatten()(x)
 
@@ -153,7 +154,7 @@ class SpeechEnhancementGAN(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(1, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Convolution2D(1, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -161,17 +162,15 @@ class SpeechEnhancementGAN(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(4, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Convolution2D(4, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(4, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Convolution2D(4, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
 		x = Convolution2D(8, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
 
 		x = Flatten()(x)
 
@@ -221,61 +220,66 @@ class SpeechEnhancementGAN(object):
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
 		speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
 
-		train_data, validation_data = self.__split_train_validation_data(
-			[video_samples, mixed_spectrograms, speech_spectrograms], validation_split
-		)
-
-		[video_samples_train, mixed_spectrograms_train, speech_spectrograms_train] = train_data
-		[video_samples_validation, mixed_spectrograms_validation, speech_spectrograms_validation] = validation_data
-
-		n_samples_train = video_samples_train.shape[0]
-		n_samples_validation = video_samples_validation.shape[0]
+		# train_data, validation_data = self.__split_train_validation_data(
+		# 	[video_samples, mixed_spectrograms, speech_spectrograms], validation_split
+		# )
+		#
+		# [video_samples_train, mixed_spectrograms_train, speech_spectrograms_train] = train_data
+		# [video_samples_validation, mixed_spectrograms_validation, speech_spectrograms_validation] = validation_data
+		#
+		# n_samples_train = video_samples_train.shape[0]
+		# n_samples_validation = video_samples_validation.shape[0]
 
 		# tensorboard_callback = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
-		# early_stopping_callback = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=1)
+		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=1)
 
 		model_cache = ModelCache(model_cache_dir)
+		generator_checkpoint = ModelCheckpoint(model_cache.generator_path(), verbose=1)
 		adversarial_checkpoint = ModelCheckpoint(model_cache.adversarial_path(), verbose=1)
 		discriminator_checkpoint = ModelCheckpoint(model_cache.discriminator_path(), verbose=1)
 
-		for e in range(0, n_epochs, n_epochs_per_model):
-			print("training (epoch = %d) ..." % e)
+		self.__generator.fit([video_samples, mixed_spectrograms], speech_spectrograms,
+							 validation_split=0.05, batch_size=32, epochs=400,
+							 callbacks=[generator_checkpoint, early_stopping], verbose=1)
 
-			permutation = np.random.permutation(n_samples_train)
-			video_samples_subset = video_samples_train[permutation[:(n_samples_train / 2)]]
-			mixed_spectrograms_subset = mixed_spectrograms_train[permutation[:(n_samples_train / 2)]]
-			real_speech_spectrograms = speech_spectrograms_train[permutation[(n_samples_train / 2):]]
-
-			generated_speech_spectrograms, _ = self.__adversarial.predict([video_samples_subset, mixed_spectrograms_subset])
-
-			discriminator_samples = np.concatenate((generated_speech_spectrograms, real_speech_spectrograms))
-			discriminator_labels = np.concatenate((np.zeros(n_samples_train / 2), np.ones(n_samples_train / 2)))
-
-			print("training discriminator ...")
-			for layer in self.__discriminator.layers:
-				layer.trainable = True
-
-			self.__discriminator.fit(discriminator_samples, discriminator_labels,
-				batch_size=batch_size, epochs=n_epochs_per_model,
-				callbacks=[discriminator_checkpoint], verbose=1
-			)
-
-			print("training adversarial ...")
-			for layer in self.__discriminator.layers:
-				layer.trainable = False
-
-			self.__adversarial.fit(
-				x=[video_samples_train, mixed_spectrograms_train],
-				y=[speech_spectrograms_train, np.ones(n_samples_train)],
-
-				validation_data=(
-					[video_samples_validation, mixed_spectrograms_validation],
-					[speech_spectrograms_validation, np.ones(n_samples_validation)]
-				),
-
-				batch_size=batch_size, epochs=n_epochs_per_model,
-				callbacks=[adversarial_checkpoint], verbose=1
-			)
+		# for e in range(0, n_epochs, n_epochs_per_model):
+		# 	print("training (epoch = %d) ..." % e)
+		#
+		# 	permutation = np.random.permutation(n_samples_train)
+		# 	video_samples_subset = video_samples_train[permutation[:(n_samples_train / 2)]]
+		# 	mixed_spectrograms_subset = mixed_spectrograms_train[permutation[:(n_samples_train / 2)]]
+		# 	real_speech_spectrograms = speech_spectrograms_train[permutation[(n_samples_train / 2):]]
+		#
+		# 	generated_speech_spectrograms, _ = self.__adversarial.predict([video_samples_subset, mixed_spectrograms_subset])
+		#
+		# 	discriminator_samples = np.concatenate((generated_speech_spectrograms, real_speech_spectrograms))
+		# 	discriminator_labels = np.concatenate((np.zeros(n_samples_train / 2), np.ones(n_samples_train / 2)))
+		#
+		# 	print("training discriminator ...")
+		# 	for layer in self.__discriminator.layers:
+		# 		layer.trainable = True
+		#
+		# 	self.__discriminator.fit(discriminator_samples, discriminator_labels,
+		# 		batch_size=batch_size, epochs=n_epochs_per_model,
+		# 		callbacks=[discriminator_checkpoint], verbose=1
+		# 	)
+		#
+		# 	print("training adversarial ...")
+		# 	for layer in self.__discriminator.layers:
+		# 		layer.trainable = False
+		#
+		# 	self.__adversarial.fit(
+		# 		x=[video_samples_train, mixed_spectrograms_train],
+		# 		y=[speech_spectrograms_train, np.ones(n_samples_train)],
+		#
+		# 		validation_data=(
+		# 			[video_samples_validation, mixed_spectrograms_validation],
+		# 			[speech_spectrograms_validation, np.ones(n_samples_validation)]
+		# 		),
+		#
+		# 		batch_size=batch_size, epochs=n_epochs_per_model,
+		# 		callbacks=[adversarial_checkpoint], verbose=1
+		# 	)
 
 	def predict(self, video_samples, mixed_spectrograms):
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
