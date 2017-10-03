@@ -39,7 +39,7 @@ class AudioVisualSubset:
 
 	@staticmethod
 	def _audio_to_video_path(audio_file_path):
-		return audio_file_path.replace("audio", "video").replace(".wav", ".mpg")
+		return glob.glob(os.path.splitext(audio_file_path.replace("audio", "video"))[0] + ".*")[0]
 
 
 class AudioDataset:
