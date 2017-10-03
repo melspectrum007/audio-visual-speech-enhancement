@@ -2,6 +2,7 @@ import argparse
 import os
 import shutil
 from datetime import datetime
+import logging
 
 import numpy as np
 
@@ -101,8 +102,8 @@ def predict(args):
 				mixed_signal.save_to_wav_file(os.path.join(sample_prediction_dir, "mixture.wav"))
 				shutil.copy(video_file_path, sample_prediction_dir)
 
-			except Exception as e:
-				print("failed to predict %s (%s). skipping" % (video_file_path, e))
+			except Exception:
+				logging.exception("failed to predict %s. skipping" % video_file_path)
 
 
 def list_speakers(args):
