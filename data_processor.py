@@ -79,6 +79,12 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 
 	speech_signal = AudioSignal.from_wav_file(speech_file_path)
 	noise_signal = AudioSignal.from_wav_file(noise_file_path)
+
+	while noise_signal.get_number_of_samples() < speech_signal.get_number_of_samples():
+		noise_signal = AudioSignal.concat([noise_signal, noise_signal])
+
+	noise_signal.truncate(speech_signal.get_number_of_samples())
+
 	mixed_signal = AudioMixer.mix([speech_signal, noise_signal])
 
 	speech_spectrograms = preprocess_audio_signal(speech_signal, slice_duration_ms, n_video_slices, video_frame_rate)
