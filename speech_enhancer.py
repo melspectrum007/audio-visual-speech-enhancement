@@ -59,7 +59,7 @@ def train(args):
 	video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms = load_preprocessed_samples(args.preprocessed_blob_path)
 
 	network = SpeechEnhancementGAN.build(video_samples.shape[1:], mixed_spectrograms.shape[1:])
-	network.train(video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, args.model_cache_dir, args.tensorboard_dir)
+	network.train(video_samples, mixed_spectrograms, speech_spectrograms, args.model_cache_dir, args.tensorboard_dir)
 	network.save(args.model_cache_dir)
 
 

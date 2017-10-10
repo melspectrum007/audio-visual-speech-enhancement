@@ -1,6 +1,6 @@
 import os
 
-from keras import optimizers
+from keras import optimizers, regularizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling2D
 from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
 from keras.layers.merge import concatenate
@@ -20,8 +20,8 @@ class SpeechEnhancementGAN(object):
 	@classmethod
 	def build(cls, video_shape, audio_spectrogram_shape):
 		generator = cls.__build_generator(video_shape, audio_spectrogram_shape)
-		discriminator = cls.__build_discriminator(audio_spectrogram_shape)
-		adversarial = cls.__build_adversarial(video_shape, audio_spectrogram_shape, generator, discriminator)
+		discriminator = None #cls.__build_discriminator(audio_spectrogram_shape)
+		adversarial = None #cls.__build_adversarial(video_shape, audio_spectrogram_shape, generator, discriminator)
 
 		return SpeechEnhancementGAN(generator, discriminator, adversarial)
 
@@ -40,17 +40,17 @@ class SpeechEnhancementGAN(object):
 
 		x = concatenate([x_video, x_audio])
 
-		x = Dense(2048)(x)
+		x = Dense(1024)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.5)(x)
 
-		x = Dense(2048)(x)
+		x = Dense(1024)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.5)(x)
 
-		x = Dense(2048)(x)
+		x = Dense(1024)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.5)(x)
@@ -58,7 +58,6 @@ class SpeechEnhancementGAN(object):
 		# TODO: Deconvolutions?
 
 		x = Dense(audio_spectrogram_shape[0] * audio_spectrogram_shape[1])(x)
-
 		audio_output = Reshape(extended_audio_spectrogram_shape)(x)
 
 		model = Model(inputs=[video_input, audio_input], outputs=audio_output)
@@ -116,29 +115,29 @@ class SpeechEnhancementGAN(object):
 
 	@classmethod
 	def __build_audio_encoder(cls, audio_input):
-		x = Convolution2D(1, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
+		# x = Convolution2D(1, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		#
+		# x = Convolution2D(1, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		#
+		# x = Convolution2D(2, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		#
+		# x = Convolution2D(4, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		#
+		# x = Convolution2D(4, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		#
+		# x = Convolution2D(8, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
 
-		x = Convolution2D(1, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-
-		x = Convolution2D(2, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-
-		x = Convolution2D(4, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-
-		x = Convolution2D(4, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-
-		x = Convolution2D(8, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
-
-		x = Flatten()(x)
+		x = Flatten()(audio_input)
 
 		return x
 
@@ -231,7 +230,7 @@ class SpeechEnhancementGAN(object):
 		# n_samples_validation = video_samples_validation.shape[0]
 
 		# tensorboard_callback = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
-		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=1)
+		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
 
 		model_cache = ModelCache(model_cache_dir)
 		generator_checkpoint = ModelCheckpoint(model_cache.generator_path(), verbose=1)
@@ -239,7 +238,7 @@ class SpeechEnhancementGAN(object):
 		discriminator_checkpoint = ModelCheckpoint(model_cache.discriminator_path(), verbose=1)
 
 		self.__generator.fit([video_samples, mixed_spectrograms], speech_spectrograms,
-							 validation_split=0.05, batch_size=32, epochs=400,
+							 batch_size=64, epochs=400, validation_split=0.1,
 							 callbacks=[generator_checkpoint, early_stopping], verbose=1)
 
 		# for e in range(0, n_epochs, n_epochs_per_model):
@@ -292,8 +291,8 @@ class SpeechEnhancementGAN(object):
 		model_cache = ModelCache(model_cache_dir)
 
 		generator = load_model(model_cache.generator_path())
-		discriminator = load_model(model_cache.discriminator_path())
-		adversarial = load_model(model_cache.adversarial_path())
+		discriminator = None#load_model(model_cache.discriminator_path())
+		adversarial = None#load_model(model_cache.adversarial_path())
 
 		return SpeechEnhancementGAN(generator, discriminator, adversarial)
 
@@ -301,8 +300,8 @@ class SpeechEnhancementGAN(object):
 		model_cache = ModelCache(model_cache_dir)
 
 		self.__generator.save(model_cache.generator_path())
-		self.__discriminator.save(model_cache.discriminator_path())
-		self.__adversarial.save(model_cache.adversarial_path())
+		# self.__discriminator.save(model_cache.discriminator_path())
+		# self.__adversarial.save(model_cache.adversarial_path())
 
 	@staticmethod
 	def __split_train_validation_data(arrays, validation_split):
