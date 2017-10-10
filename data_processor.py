@@ -93,17 +93,14 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	mixed_spectrograms = preprocess_audio_signal(mixed_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 
-	speech_masks = np.zeros(shape=mixed_spectrograms.shape)
-	speech_masks[speech_spectrograms > noise_spectrograms] = 1
-
-	return mixed_spectrograms, speech_masks, speech_spectrograms, mixed_signal
+	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal
 
 
 def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_duration_ms=200):
 	print("preprocessing sample: %s, %s, %s..." % (video_file_path, speech_file_path, noise_file_path))
 
 	video_samples, video_frame_rate = preprocess_video_sample(video_file_path, slice_duration_ms)
-	mixed_spectrograms, speech_masks, speech_spectrograms, mixed_signal = preprocess_audio_pair(
+	mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal = preprocess_audio_pair(
 		speech_file_path, noise_file_path, slice_duration_ms, video_samples.shape[0], video_frame_rate
 	)
 
@@ -112,8 +109,8 @@ def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_
 	return (
 		video_samples[:n_slices],
 		mixed_spectrograms[:n_slices],
-		speech_masks[:n_slices],
 		speech_spectrograms[:n_slices],
+		noise_spectrograms[:n_slices],
 		mixed_signal,
 		video_frame_rate
 	)
@@ -139,14 +136,14 @@ def preprocess_data(video_file_paths, speech_file_paths, noise_file_paths):
 
 	video_samples = [p[0] for p in preprocessed]
 	mixed_spectrograms = [p[1] for p in preprocessed]
-	speech_masks = [p[2] for p in preprocessed]
-	speech_spectrograms = [p[3] for p in preprocessed]
+	speech_spectrograms = [p[2] for p in preprocessed]
+	noise_spectrograms = [p[3] for p in preprocessed]
 
 	return (
 		np.concatenate(video_samples),
 		np.concatenate(mixed_spectrograms),
-		np.concatenate(speech_masks),
-		np.concatenate(speech_spectrograms)
+		np.concatenate(speech_spectrograms),
+		np.concatenate(noise_spectrograms)
 	)
 
 
