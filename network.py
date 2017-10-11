@@ -229,7 +229,7 @@ class SpeechEnhancementGAN(object):
 		# n_samples_train = video_samples_train.shape[0]
 		# n_samples_validation = video_samples_validation.shape[0]
 
-		# tensorboard_callback = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
+		tensorboard_callback = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
 
 		model_cache = ModelCache(model_cache_dir)
@@ -239,7 +239,7 @@ class SpeechEnhancementGAN(object):
 
 		self.__generator.fit([video_samples, mixed_spectrograms], speech_spectrograms,
 							 batch_size=64, epochs=400, validation_split=0.1,
-							 callbacks=[generator_checkpoint, early_stopping], verbose=1)
+							 callbacks=[generator_checkpoint, early_stopping, tensorboard_callback], verbose=1)
 
 		# for e in range(0, n_epochs, n_epochs_per_model):
 		# 	print("training (epoch = %d) ..." % e)
