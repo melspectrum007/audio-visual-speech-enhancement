@@ -10,6 +10,8 @@ import data_processor
 from dataset import AudioVisualDataset, AudioDataset
 from network import SpeechEnhancementGAN
 
+from mediaio import ffmpeg
+
 
 def preprocess(args):
 	speaker_ids = list_speakers(args)
@@ -64,24 +66,21 @@ def train(args):
 
 
 def predict(args):
-	prediction_output_dir = os.path.join(args.prediction_output_dir, '{:%Y-%m-%d_%H-%M-%S}'.format(datetime.now()))
-	os.mkdir(prediction_output_dir)
+	storage = PredictionStorage(args.prediction_output_dir)
 
 	network = SpeechEnhancementGAN.load(args.model_cache_dir)
 	normalization_data = data_processor.VideoNormalizationData.load(args.normalization_cache)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
-		speaker_prediction_dir = os.path.join(prediction_output_dir, speaker_id)
-		os.mkdir(speaker_prediction_dir)
-
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
 			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=10
 		)
 
 		for video_file_path, speech_file_path, noise_file_path in zip(video_file_paths, speech_file_paths, noise_file_paths):
 			try:
-				print("predicting %s..." % video_file_path)
+				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
+
 				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, video_frame_rate = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path
 				)
@@ -93,17 +92,50 @@ def predict(args):
 					mixed_signal, predicted_speech_spectrograms, video_frame_rate
 				)
 
-				speech_name = os.path.splitext(os.path.basename(video_file_path))[0]
-				noise_name = os.path.splitext(os.path.basename(noise_file_path))[0]
-				sample_prediction_dir = os.path.join(speaker_prediction_dir, speech_name + "_" + noise_name)
-				os.mkdir(sample_prediction_dir)
-
-				predicted_speech_signal.save_to_wav_file(os.path.join(sample_prediction_dir, "enhanced.wav"))
-				mixed_signal.save_to_wav_file(os.path.join(sample_prediction_dir, "mixture.wav"))
-				shutil.copy(video_file_path, sample_prediction_dir)
+				storage.save_prediction(speaker_id, video_file_path, noise_file_path, mixed_signal, predicted_speech_signal)
 
 			except Exception:
 				logging.exception("failed to predict %s. skipping" % video_file_path)
+
+
+class PredictionStorage(object):
+
+	def __init__(self, storage_dir):
+		self.__base_dir = os.path.join(storage_dir, '{:%Y-%m-%d_%H-%M-%S}'.format(datetime.now()))
+		os.mkdir(self.__base_dir)
+
+	def __create_speaker_dir(self, speaker_id):
+		speaker_dir = os.path.join(self.__base_dir, speaker_id)
+
+		if not os.path.exists(speaker_dir):
+			os.mkdir(speaker_dir)
+
+		return speaker_dir
+
+	def save_prediction(self, speaker_id, video_file_path, noise_file_path, mixed_signal, predicted_speech_signal):
+		speaker_dir = self.__create_speaker_dir(speaker_id)
+
+		speech_name = os.path.splitext(os.path.basename(video_file_path))[0]
+		noise_name = os.path.splitext(os.path.basename(noise_file_path))[0]
+
+		sample_prediction_dir = os.path.join(speaker_dir, speech_name + "_" + noise_name)
+		os.mkdir(sample_prediction_dir)
+
+		mixture_audio_path = os.path.join(sample_prediction_dir, "mixture.wav")
+		enhanced_speech_audio_path = os.path.join(sample_prediction_dir, "enhanced.wav")
+
+		mixed_signal.save_to_wav_file(mixture_audio_path)
+		predicted_speech_signal.save_to_wav_file(enhanced_speech_audio_path)
+
+		video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
+		mixture_video_path = os.path.join(sample_prediction_dir, "mixture" + video_extension)
+		enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
+
+		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
+		ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
+
+		os.unlink(mixture_audio_path)
+		os.unlink(enhanced_speech_audio_path)
 
 
 def list_speakers(args):
