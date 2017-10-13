@@ -158,21 +158,25 @@ class VideoDataNormalizer(object):
 
 	@classmethod
 	def apply_normalization(cls, video_samples, normalization_data):
+		# video_samples: slices x height x width x frames_per_slice
+		for s in range(video_samples.shape[0]):
+			for f in range(video_samples.shape[3]):
+				video_samples[s, :, :, f] -= normalization_data.mean_image
+
 		video_samples /= 255
-		video_samples -= normalization_data.mean
 
 	@staticmethod
 	def __init_normalization_data(video_samples):
 		# video_samples: slices x height x width x frames_per_slice
-		mean = video_samples.mean() / 255
+		mean_image = np.mean(video_samples, axis=(0, 3))
 
-		return VideoNormalizationData(mean)
+		return VideoNormalizationData(mean_image)
 
 
 class VideoNormalizationData(object):
 
-	def __init__(self, mean):
-		self.mean = mean
+	def __init__(self, mean_image):
+		self.mean_image = mean_image
 
 	def save(self, path):
 		with open(path, 'wb') as normalization_fd:
