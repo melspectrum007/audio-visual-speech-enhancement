@@ -1,6 +1,5 @@
 import argparse
 import os
-import shutil
 from datetime import datetime
 import logging
 
@@ -17,7 +16,7 @@ def preprocess(args):
 	speaker_ids = list_speakers(args)
 
 	video_file_paths, speech_file_paths, noise_file_paths = list_data(
-		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1000
+		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1500
 	)
 
 	video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms = data_processor.preprocess_data(

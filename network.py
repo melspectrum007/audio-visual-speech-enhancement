@@ -238,7 +238,7 @@ class SpeechEnhancementGAN(object):
 		discriminator_checkpoint = ModelCheckpoint(model_cache.discriminator_path(), verbose=1)
 
 		self.__generator.fit([video_samples, mixed_spectrograms], speech_spectrograms,
-							 batch_size=64, epochs=400, validation_split=0.1,
+							 batch_size=32, epochs=400, validation_split=0.1,
 							 callbacks=[generator_checkpoint, early_stopping, tensorboard_callback], verbose=1)
 
 		# for e in range(0, n_epochs, n_epochs_per_model):
