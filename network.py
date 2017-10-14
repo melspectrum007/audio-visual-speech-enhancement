@@ -62,7 +62,7 @@ class SpeechEnhancementGAN(object):
 
 		model = Model(inputs=[video_input, audio_input], outputs=audio_output)
 
-		optimizer = optimizers.adam(lr=0.001, decay=1e-6)
+		optimizer = optimizers.adam(lr=5e-4)
 		model.compile(loss='mean_squared_error', optimizer=optimizer)
 
 		model.summary()
@@ -187,7 +187,7 @@ class SpeechEnhancementGAN(object):
 
 		model = Model(inputs=audio_input, outputs=label_output)
 
-		optimizer = optimizers.adam(lr=0.001, decay=1e-6)
+		optimizer = optimizers.adam(lr=5e-4)
 		model.compile(loss='binary_crossentropy', optimizer=optimizer)
 
 		model.summary()
@@ -207,7 +207,7 @@ class SpeechEnhancementGAN(object):
 		label_output = discriminator(generator_output)
 		model = Model(inputs=[video_input, audio_input], outputs=[generator_output, label_output])
 
-		optimizer = optimizers.adam(lr=0.001, decay=1e-6)
+		optimizer = optimizers.adam(lr=5e-4)
 		model.compile(loss=['mean_squared_error', 'binary_crossentropy'], loss_weights=[1, crossentropy_weight], optimizer=optimizer)
 
 		model.summary()
