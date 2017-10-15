@@ -23,9 +23,6 @@ def preprocess(args):
 		video_file_paths, speech_file_paths, noise_file_paths
 	)
 
-	normalization_data = data_processor.VideoDataNormalizer.normalize(video_samples)
-	normalization_data.save(args.normalization_cache)
-
 	np.savez(
 		args.preprocessed_blob_path,
 		video_samples=video_samples,
@@ -57,7 +54,10 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 
 
 def train(args):
-	video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms = load_preprocessed_samples(args.preprocessed_blob_path)
+	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_path)
+
+	normalization_data = data_processor.DataNormalizer.normalize(video_samples, mixed_spectrograms)
+	normalization_data.save(args.normalization_cache)
 
 	network = SpeechEnhancementGAN.build(video_samples.shape[1:], mixed_spectrograms.shape[1:])
 	network.train(video_samples, mixed_spectrograms, speech_spectrograms, args.model_cache_dir, args.tensorboard_dir)
@@ -68,7 +68,7 @@ def predict(args):
 	storage = PredictionStorage(args.prediction_output_dir)
 
 	network = SpeechEnhancementGAN.load(args.model_cache_dir)
-	normalization_data = data_processor.VideoNormalizationData.load(args.normalization_cache)
+	normalization_data = data_processor.NormalizationData.load(args.normalization_cache)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
@@ -80,11 +80,11 @@ def predict(args):
 			try:
 				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
 
-				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, video_frame_rate = data_processor.preprocess_sample(
+				video_samples, mixed_spectrograms, _, _, mixed_signal, video_frame_rate = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path
 				)
 
-				data_processor.VideoDataNormalizer.apply_normalization(video_samples, normalization_data)
+				data_processor.DataNormalizer.apply_normalization(video_samples, mixed_spectrograms, normalization_data)
 
 				predicted_speech_spectrograms = network.predict(video_samples, mixed_spectrograms)
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
@@ -171,13 +171,13 @@ def main():
 	preprocess_parser.add_argument("--dataset_dir", type=str, required=True)
 	preprocess_parser.add_argument("--noise_dirs", nargs="+", type=str, required=True)
 	preprocess_parser.add_argument("--preprocessed_blob_path", type=str, required=True)
-	preprocess_parser.add_argument("--normalization_cache", type=str, required=True)
 	preprocess_parser.add_argument("--speakers", nargs="+", type=str)
 	preprocess_parser.add_argument("--ignored_speakers", nargs="+", type=str)
 	preprocess_parser.set_defaults(func=preprocess)
 
 	train_parser = action_parsers.add_parser("train")
 	train_parser.add_argument("--preprocessed_blob_path", type=str, required=True)
+	train_parser.add_argument("--normalization_cache", type=str, required=True)
 	train_parser.add_argument("--model_cache_dir", type=str, required=True)
 	train_parser.add_argument("--tensorboard_dir", type=str, required=True)
 	# train_parser.add_argument("--speakers", nargs="+", type=str)

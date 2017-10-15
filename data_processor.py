@@ -147,36 +147,62 @@ def preprocess_data(video_file_paths, speech_file_paths, noise_file_paths):
 	)
 
 
-class VideoDataNormalizer(object):
+class DataNormalizer(object):
 
 	@classmethod
-	def normalize(cls, video_samples):
-		normalization_data = cls.__init_normalization_data(video_samples)
-		cls.apply_normalization(video_samples, normalization_data)
+	def normalize(cls, video_samples, audio_samples):
+		mean_image, std_image = cls.__init_video_normalization_data(video_samples)
+		mean_spectrogram, std_spectrogram = cls.__init_audio_normalization_data(audio_samples)
+
+		normalization_data = NormalizationData(mean_image, std_image, mean_spectrogram, std_spectrogram)
+		cls.apply_normalization(video_samples, audio_samples, normalization_data)
 
 		return normalization_data
 
 	@classmethod
-	def apply_normalization(cls, video_samples, normalization_data):
+	def apply_normalization(cls, video_samples, audio_samples, normalization_data):
+		cls.apply_video_normalization(video_samples, normalization_data)
+		cls.apply_audio_normalization(audio_samples, normalization_data)
+
+	@classmethod
+	def apply_video_normalization(cls, video_samples, normalization_data):
 		# video_samples: slices x height x width x frames_per_slice
 		for s in range(video_samples.shape[0]):
 			for f in range(video_samples.shape[3]):
 				video_samples[s, :, :, f] -= normalization_data.mean_image
+				video_samples[s, :, :, f] /= normalization_data.std_image
 
-		video_samples /= 255
+	@classmethod
+	def apply_audio_normalization(cls, audio_samples, normalization_data):
+		for s in range(audio_samples.shape[0]):
+			audio_samples[s, :, :] -= normalization_data.mean_spectrogram
+			audio_samples[s, :, :] /= normalization_data.std_spectrogram
 
 	@staticmethod
-	def __init_normalization_data(video_samples):
+	def __init_video_normalization_data(video_samples):
 		# video_samples: slices x height x width x frames_per_slice
 		mean_image = np.mean(video_samples, axis=(0, 3))
+		std_image = np.std(video_samples, axis=(0, 3))
 
-		return VideoNormalizationData(mean_image)
+		return mean_image, std_image
+
+	@staticmethod
+	def __init_audio_normalization_data(audio_samples):
+		# audio_samples: slices x freqs x time
+		mean_spectrogram = np.mean(audio_samples, axis=0)
+		std_spectrogram = np.std(audio_samples, axis=0)
+
+		return mean_spectrogram, std_spectrogram
 
 
-class VideoNormalizationData(object):
+class NormalizationData(object):
 
-	def __init__(self, mean_image):
+	def __init__(self, mean_image, std_image, mean_spectrogram, std_spectrogram):
 		self.mean_image = mean_image
+		self.std_image = std_image
+
+		self.mean_spectrogram = mean_spectrogram
+		self.std_spectrogram = std_spectrogram
 
 	def save(self, path):
 		with open(path, 'wb') as normalization_fd:
