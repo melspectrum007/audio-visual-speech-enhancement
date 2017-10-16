@@ -7,9 +7,10 @@ import numpy as np
 
 import data_processor
 from dataset import AudioVisualDataset, AudioDataset
-from network import SpeechEnhancementGAN
+from network import SpeechEnhancementNetwork
 
 from mediaio import ffmpeg
+from mediaio.video_io import VideoFileWriter
 
 
 def preprocess(args):
@@ -56,18 +57,25 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 def train(args):
 	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_path)
 
-	normalization_data = data_processor.DataNormalizer.normalize(video_samples, mixed_spectrograms)
+	normalized_video_samples = np.copy(video_samples)
+
+	normalization_data = data_processor.DataNormalizer.normalize(normalized_video_samples, mixed_spectrograms)
 	normalization_data.save(args.normalization_cache)
 
-	network = SpeechEnhancementGAN.build(video_samples.shape[1:], mixed_spectrograms.shape[1:])
-	network.train(video_samples, mixed_spectrograms, speech_spectrograms, args.model_cache_dir, args.tensorboard_dir)
+	network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
+	network.train(
+		mixed_spectrograms, normalized_video_samples,
+		speech_spectrograms, video_samples,
+		args.model_cache_dir, args.tensorboard_dir
+	)
+
 	network.save(args.model_cache_dir)
 
 
 def predict(args):
 	storage = PredictionStorage(args.prediction_output_dir)
 
-	network = SpeechEnhancementGAN.load(args.model_cache_dir)
+	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
 	normalization_data = data_processor.NormalizationData.load(args.normalization_cache)
 
 	speaker_ids = list_speakers(args)
@@ -86,12 +94,16 @@ def predict(args):
 
 				data_processor.DataNormalizer.apply_normalization(video_samples, mixed_spectrograms, normalization_data)
 
-				predicted_speech_spectrograms = network.predict(video_samples, mixed_spectrograms)
+				predicted_speech_spectrograms, recovered_video_samples = network.predict(mixed_spectrograms, video_samples)
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_signal, predicted_speech_spectrograms, video_frame_rate
 				)
 
-				storage.save_prediction(speaker_id, video_file_path, noise_file_path, mixed_signal, predicted_speech_signal)
+				storage.save_prediction(
+					speaker_id, video_file_path, noise_file_path,
+					mixed_signal, predicted_speech_signal,
+					video_frame_rate, recovered_video_samples
+				)
 
 			except Exception:
 				logging.exception("failed to predict %s. skipping" % video_file_path)
@@ -111,7 +123,10 @@ class PredictionStorage(object):
 
 		return speaker_dir
 
-	def save_prediction(self, speaker_id, video_file_path, noise_file_path, mixed_signal, predicted_speech_signal):
+	def save_prediction(self, speaker_id, video_file_path, noise_file_path,
+						mixed_signal, predicted_speech_signal,
+						video_frame_rate, recovered_video_samples):
+
 		speaker_dir = self.__create_speaker_dir(speaker_id)
 
 		speech_name = os.path.splitext(os.path.basename(video_file_path))[0]
@@ -129,12 +144,21 @@ class PredictionStorage(object):
 		video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
 		mixture_video_path = os.path.join(sample_prediction_dir, "mixture" + video_extension)
 		enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
+		temp_recovered_video_path = os.path.join(sample_prediction_dir, "tmp_recovered" + video_extension)
+		recovered_video_path = os.path.join(sample_prediction_dir, "recovered" + video_extension)
+
+		with VideoFileWriter(temp_recovered_video_path, video_frame_rate) as writer:
+			for s in range(recovered_video_samples.shape[0]):
+				for f in range(recovered_video_samples.shape[3]):
+					writer.write_frame(recovered_video_samples[s, :, :, f])
 
 		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
 		ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
+		ffmpeg.merge(temp_recovered_video_path, enhanced_speech_audio_path, recovered_video_path)
 
 		os.unlink(mixture_audio_path)
 		os.unlink(enhanced_speech_audio_path)
+		os.unlink(temp_recovered_video_path)
 
 
 def list_speakers(args):
