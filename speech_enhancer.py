@@ -57,10 +57,9 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 def train(args):
 	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_path)
 
-	normalized_video_samples = np.copy(video_samples)
-
-	normalization_data = data_processor.DataNormalizer.normalize(normalized_video_samples, mixed_spectrograms)
-	normalization_data.save(args.normalization_cache)
+	normalizer = data_processor.VideoNormalizer(video_samples)
+	normalized_video_samples = normalizer.normalize(video_samples)
+	normalizer.save(args.normalization_cache)
 
 	network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
 	network.train(
@@ -76,7 +75,7 @@ def predict(args):
 	storage = PredictionStorage(args.prediction_output_dir)
 
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
-	normalization_data = data_processor.NormalizationData.load(args.normalization_cache)
+	normalizer = data_processor.VideoNormalizer.load(args.normalization_cache)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
@@ -92,7 +91,7 @@ def predict(args):
 					video_file_path, speech_file_path, noise_file_path
 				)
 
-				data_processor.DataNormalizer.apply_normalization(video_samples, mixed_spectrograms, normalization_data)
+				video_samples = normalizer.normalize(video_samples)
 
 				predicted_speech_spectrograms, recovered_video_samples = network.predict(mixed_spectrograms, video_samples)
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
