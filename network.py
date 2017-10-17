@@ -30,10 +30,17 @@ class SpeechEnhancementNetwork(object):
         audio_input = Input(shape=extended_audio_spectrogram_shape)
         video_input = Input(shape=video_shape)
 
-        model = Model(inputs=[audio_input, video_input], outputs=decoder(encoder([audio_input, video_input])))
+        av_embedding, a_embedding, v_embedding = encoder(audio_input, video_input)
+
+        av_in_a_out, av_in_v_out = decoder(av_embedding)
+        a_in_a_out, a_in_v_out = decoder(a_embedding)
+        v_in_a_out, v_in_v_out = decoder(v_embedding)
+
+        model = Model(inputs=[audio_input, video_input], outputs=[av_in_a_out, a_in_a_out, v_in_a_out, av_in_v_out, a_in_v_out, v_in_v_out])
 
         optimizer = optimizers.adam(lr=5e-4)
-        model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.25], optimizer=optimizer)
+        model.compile(loss=['mean_squared_error', 'mean_squared_error', 'mean_squared_error', 'mean_squared_error', 'mean_squared_error',
+                            'mean_squared_error'], loss_weights=[1, 1, 1, 0.25, 0.25, 0.25], optimizer=optimizer)
 
         model.summary()
 
@@ -50,10 +57,16 @@ class SpeechEnhancementNetwork(object):
         video_embedding_matrix = cls.__build_video_encoder(video_input)
         video_embedding = Flatten()(video_embedding_matrix)
 
-        x = concatenate([audio_embedding, video_embedding])
-        shared_embedding_size = int(x._keras_shape[1] / 2)
+        # todo: use other value than 0 for the darkened input?
+        audio_visual_in = concatenate([audio_embedding, video_embedding])
+        audio_only_in = concatenate([audio_embedding, np.zeros_like(video_embedding)])
+        video_only_in = concatenate([np.zeros_like(audio_embedding), video_embedding])
 
-        x = Dense(shared_embedding_size)(x)
+        shared_embedding_size = int(audio_visual_in._keras_shape[1] / 2)
+
+        # attention module
+        shared_input = Input(shape=shared_embedding_size)
+        x = Dense(shared_embedding_size)(shared_input)
         x = BatchNormalization()(x)
         x = LeakyReLU()(x)
         x = Dropout(0.1)(x)
@@ -62,11 +75,16 @@ class SpeechEnhancementNetwork(object):
         x = BatchNormalization()(x)
         x = LeakyReLU()(x)
         x = Dropout(0.1)(x)
+        shared_embedding_out = Dense(shared_embedding_size)(x)
 
-        shared_embedding = Dense(shared_embedding_size)(x)
+        attention = Model(shared_input, shared_embedding_out)
 
-        model = Model(inputs=[audio_input, video_input], outputs=shared_embedding)
-        model.summary()
+        audio_visual_embedding = attention(audio_visual_in)
+        audio_only_embedding = attention(audio_only_in)
+        video_only_embedding = attention(video_only_in)
+
+        model = Model(inputs=[audio_input, video_input], outputs=[audio_visual_embedding, audio_only_embedding, video_only_embedding])
+        # model.summary()
 
         return model, shared_embedding_size, audio_embedding_matrix.shape[1:].as_list(), video_embedding_matrix.shape[1:].as_list()
 
@@ -259,37 +277,47 @@ class SpeechEnhancementNetwork(object):
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
         tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
-        epochs = 400
-        epochs_per_mode = 20
-        for e in range(epochs / epochs_per_mode):
-            mode = np.random.randint(3)
-            if mode == 0: # audio-video
-                print 'audio-video'
-                self.__model.fit(
+        self.__model.fit(
                     x=[mixed_spectrograms, input_video_samples],
-                    y=[speech_spectrograms, output_video_samples],
-                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
+                    y=[speech_spectrograms, speech_spectrograms, speech_spectrograms,
+                       output_video_samples, output_video_samples, output_video_samples],
+                    validation_split=0.1, batch_size=16, epochs=400,
                     callbacks=[checkpoint, early_stopping, tensorboard],
                     verbose=1
                 )
-            if mode == 1: # audio-only
-                print 'audio-only'
-                self.__model.fit(
-                    x=[mixed_spectrograms, np.zeros_like(input_video_samples)],
-                    y=[speech_spectrograms, output_video_samples],
-                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-                    callbacks=[checkpoint, early_stopping, tensorboard],
-                    verbose=1
-                )
-            if mode == 2: # video-only
-                print 'video-only'
-                self.__model.fit(
-                    x=[np.zero_like(mixed_spectrograms), input_video_samples],
-                    y=[speech_spectrograms, output_video_samples],
-                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-                    callbacks=[checkpoint, early_stopping, tensorboard],
-                    verbose=1
-                )
+
+
+        # epochs = 400
+        # epochs_per_mode = 20
+        # for e in range(epochs / epochs_per_mode):
+        #     mode = np.random.randint(3)
+        #     if mode == 0: # audio-video
+        #         print 'audio-video'
+        #         self.__model.fit(
+        #             x=[mixed_spectrograms, input_video_samples],
+        #             y=[speech_spectrograms, output_video_samples],
+        #             validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
+        #             callbacks=[checkpoint, early_stopping, tensorboard],
+        #             verbose=1
+        #         )
+        #     if mode == 1: # audio-only
+        #         print 'audio-only'
+        #         self.__model.fit(
+        #             x=[mixed_spectrograms, np.zeros_like(input_video_samples)],
+        #             y=[speech_spectrograms, output_video_samples],
+        #             validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
+        #             callbacks=[checkpoint, early_stopping, tensorboard],
+        #             verbose=1
+        #         )
+        #     if mode == 2: # video-only
+        #         print 'video-only'
+        #         self.__model.fit(
+        #             x=[np.zero_like(mixed_spectrograms), input_video_samples],
+        #             y=[speech_spectrograms, output_video_samples],
+        #             validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
+        #             callbacks=[checkpoint, early_stopping, tensorboard],
+        #             verbose=1
+        #         )
 
     def predict(self, mixed_spectrograms, video_samples):
         mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
