@@ -15,8 +15,8 @@ class SpeechEnhancementNetwork(object):
     def __init__(self, model, training_model, audio_embedding_shape=None, video_embedding_shape=None):
         self.__model = model
         self.__training_model = training_model
-        self.__audio_embedding_shape = audio_embedding_shape
-        self.__video_embedding_shape = video_embedding_shape
+        self.__audio_embedding_size = np.prod(audio_embedding_shape)
+        self.__video_embedding_size = np.prod(video_embedding_shape)
 
     @classmethod
     def build(cls, audio_spectrogram_shape, video_shape):
@@ -291,7 +291,7 @@ class SpeechEnhancementNetwork(object):
         tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
         self.__training_model.fit(
-            x=[mixed_spectrograms, input_video_samples, np.zeros(self.__audio_embedding_shape), np.zeros(self.__video_embedding_shape)],
+            x=[mixed_spectrograms, input_video_samples, np.zeros(self.__audio_embedding_size), np.zeros(self.__video_embedding_size)],
             y=[speech_spectrograms, speech_spectrograms, speech_spectrograms,output_video_samples,
                output_video_samples, output_video_samples],
             validation_split=0.1, batch_size=16, epochs=400,
