@@ -32,8 +32,8 @@ class SpeechEnhancementNetwork(object):
 
         audio_input = Input(shape=extended_audio_spectrogram_shape)
         video_input = Input(shape=video_shape)
-        fake_audio_embedding = Input(shape=audio_embedding_shape)
-        fake_video_embedding = Input(shape=video_embedding_shape)
+        fake_audio_embedding = Input(shape=(np.prod(audio_embedding_shape),))
+        fake_video_embedding = Input(shape=(np.prod(video_embedding_shape),))
 
         audio_embedding, video_embedding = encoder(inputs=[audio_input, video_input])
 
