@@ -12,9 +12,10 @@ import numpy as np
 
 class SpeechEnhancementNetwork(object):
 
-    def __init__(self, model, training_model, audio_embedding_shape=None, video_embedding_shape=None):
+    def __init__(self, model, audio_only_model, video_only_model, audio_embedding_shape=None, video_embedding_shape=None):
         self.__model = model
-        self.__training_model = training_model
+        self.__audio_only_model = audio_only_model
+        self.__video_only_model = video_only_model
         self.__audio_embedding_size = np.prod(audio_embedding_shape)
         self.__video_embedding_size = np.prod(video_embedding_shape)
 
@@ -24,56 +25,128 @@ class SpeechEnhancementNetwork(object):
         extended_audio_spectrogram_shape = list(audio_spectrogram_shape)
         extended_audio_spectrogram_shape.append(1)
 
-        encoder, audio_embedding_shape, video_embedding_shape = cls.__build_encoder(extended_audio_spectrogram_shape, video_shape)
-
+        # create modules of network
+        audio_encoder, audio_embedding_shape = cls.__build_audio_encoder(extended_audio_spectrogram_shape)
+        video_encoder, video_embedding_shape = cls.__build_video_encoder(video_shape)
         attention, shared_embedding_size = cls.__build_attention(audio_embedding_shape, video_embedding_shape)
-
         decoder = cls.__build_decoder(shared_embedding_size, audio_embedding_shape, video_embedding_shape, video_shape)
 
+        # create possible inputs
         audio_input = Input(shape=extended_audio_spectrogram_shape)
         video_input = Input(shape=video_shape)
         fake_audio_embedding = Input(shape=(np.prod(audio_embedding_shape),))
         fake_video_embedding = Input(shape=(np.prod(video_embedding_shape),))
 
-        audio_embedding, video_embedding = encoder(inputs=[audio_input, video_input])
+        # encoding
+        audio_embedding = audio_encoder(audio_input)
+        video_embedding = video_encoder(video_input)
 
+        # mixing
         av_embedding = attention(inputs=[audio_embedding, video_embedding])
         a_only_embedding = attention(inputs=[audio_embedding, fake_video_embedding])
         v_only_embedding = attention(inputs=[fake_audio_embedding, video_embedding])
 
+        # decoding
         av_in_a_out, av_in_v_out = decoder(av_embedding)
         a_in_a_out, a_in_v_out = decoder(a_only_embedding)
         v_in_a_out, v_in_v_out = decoder(v_only_embedding)
 
-        mulitmodal_training_model = Model(inputs=[audio_input, video_input, fake_audio_embedding, fake_video_embedding],
-                      outputs=[av_in_a_out, a_in_a_out, v_in_a_out, av_in_v_out, a_in_v_out, v_in_v_out])
+        # compiling models
+        audio_visual_model = Model(inputs=[audio_input, video_input], outputs=[av_in_a_out, av_in_v_out])
+        audio_visual_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.25], optimizer=optimizers.Adam(lr=5e-4))
 
-        optimizer = optimizers.adam(lr=5e-4)
-        mulitmodal_training_model.compile(loss=['mean_squared_error', 'mean_squared_error', 'mean_squared_error',
-                                                'mean_squared_error', 'mean_squared_error','mean_squared_error'],
-                                          loss_weights=[1, 1, 1, 0.25, 0.25, 0.25], optimizer=optimizer)
+        audio_only_model = Model(inputs=[audio_input, fake_video_embedding], outputs=[a_in_a_out, a_in_v_out])
+        audio_only_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.25], optimizer=optimizers.Adam(lr=5e-4))
 
-        model = Model(inputs=[audio_input, video_input], outputs=[av_in_a_out, av_in_v_out])
-        model.compile(loss=['mean_squared_error', 'mean_squared_error'], optimizer=optimizers.Adam(lr=5e-4))
-        # model.summary()
+        video_only_model = Model(inputs=[fake_audio_embedding, video_input], outputs=[v_in_a_out, v_in_v_out])
+        video_only_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.25], optimizer=optimizers.Adam(lr=5e-4))
 
-        return SpeechEnhancementNetwork(model, mulitmodal_training_model, audio_embedding_shape, video_embedding_shape)
+        return SpeechEnhancementNetwork(audio_visual_model, audio_only_model, video_only_model, audio_embedding_shape, video_embedding_shape)
 
     @classmethod
-    def __build_encoder(cls, extended_audio_spectrogram_shape, video_shape):
+    def __build_audio_encoder(cls, extended_audio_spectrogram_shape):
         audio_input = Input(shape=extended_audio_spectrogram_shape)
-        video_input = Input(shape=video_shape)
 
-        audio_embedding_matrix = cls.__build_audio_encoder(audio_input)
-        audio_embedding = Flatten()(audio_embedding_matrix)
+        x = Convolution2D(8, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
 
-        video_embedding_matrix = cls.__build_video_encoder(video_input)
-        video_embedding = Flatten()(video_embedding_matrix)
+        x = Convolution2D(8, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
 
-        model = Model(inputs=[audio_input, video_input], outputs=[audio_embedding, video_embedding])
+        x = Convolution2D(16, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        x = Convolution2D(32, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        x = Convolution2D(32, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        x = Convolution2D(64, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
+
+        audio_embedding_shape = x.shape[1:].as_list()
+        audio_embedding = Flatten()(x)
+
+        model = Model(inputs=[audio_input], outputs=[audio_embedding])
         model.summary()
 
-        return model, audio_embedding_matrix.shape[1:].as_list(), video_embedding_matrix.shape[1:].as_list()
+        return model, audio_embedding_shape
+
+    @classmethod
+    def __build_video_encoder(cls, video_shape):
+        video_input = Input(shape=video_shape)
+
+        x = Convolution2D(128, kernel_size=(5, 5), padding='same')(video_input)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
+        x = Dropout(0.1)(x)
+
+        x = Convolution2D(128, kernel_size=(5, 5), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
+        x = Dropout(0.1)(x)
+
+        x = Convolution2D(256, kernel_size=(3, 3), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
+        x = Dropout(0.1)(x)
+
+        x = Convolution2D(256, kernel_size=(3, 3), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
+        x = Dropout(0.1)(x)
+
+        x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
+        x = Dropout(0.1)(x)
+
+        x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
+        x = Dropout(0.1)(x)
+
+        x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
+
+        video_embedding_shape = x.shape[1:].as_list()
+
+        video_embedding = Flatten()(x)
+
+        model = Model(inputs=[video_input], outputs=[video_embedding])
+        model.summary()
+
+        return model, video_embedding_shape
 
     @classmethod
     def __build_attention(cls, audio_embedding_shape, video_embedding_shape):
@@ -139,32 +212,6 @@ class SpeechEnhancementNetwork(object):
         return model
 
     @staticmethod
-    def __build_audio_encoder(audio_input):
-        x = Convolution2D(8, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-
-        x = Convolution2D(8, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-
-        x = Convolution2D(16, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-
-        x = Convolution2D(32, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-
-        x = Convolution2D(32, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-
-        x = Convolution2D(64, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
-
-        return x
-
-    @staticmethod
     def __build_audio_decoder(embedding):
         x = Deconvolution2D(64, kernel_size=(1, 1), strides=(1, 1), padding='same')(embedding)
         x = BatchNormalization()(x)
@@ -191,48 +238,6 @@ class SpeechEnhancementNetwork(object):
         x = LeakyReLU()(x)
 
         x = Deconvolution2D(1, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
-
-        return x
-
-    @staticmethod
-    def __build_video_encoder(video_input):
-        x = Convolution2D(128, kernel_size=(5, 5), padding='same')(video_input)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
-        x = Dropout(0.1)(x)
-
-        x = Convolution2D(128, kernel_size=(5, 5), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
-        x = Dropout(0.1)(x)
-
-        x = Convolution2D(256, kernel_size=(3, 3), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
-        x = Dropout(0.1)(x)
-
-        x = Convolution2D(256, kernel_size=(3, 3), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
-        x = Dropout(0.1)(x)
-
-        x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
-        x = Dropout(0.1)(x)
-
-        x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU()(x)
-        x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
-        x = Dropout(0.1)(x)
-
-        x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
 
         return x
 
@@ -291,47 +296,46 @@ class SpeechEnhancementNetwork(object):
         tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
         N = mixed_spectrograms.shape[0]
 
-        self.__training_model.fit(
-            x=[mixed_spectrograms, input_video_samples, np.zeros([N, self.__audio_embedding_size]), np.zeros([N, self.__video_embedding_size])],
-            y=[speech_spectrograms, speech_spectrograms, speech_spectrograms,output_video_samples,
-               output_video_samples, output_video_samples],
-            validation_split=0.1, batch_size=16, epochs=400,
-            callbacks=[checkpoint, early_stopping, tensorboard],
-            verbose=1
-        )
+        # self.__training_model.fit(
+        #     x=[mixed_spectrograms, input_video_samples, np.zeros([N, self.__audio_embedding_size]), np.zeros([N, self.__video_embedding_size])],
+        #     y=[speech_spectrograms, speech_spectrograms, speech_spectrograms,output_video_samples,
+        #        output_video_samples, output_video_samples],
+        #     validation_split=0.1, batch_size=16, epochs=400,
+        #     callbacks=[checkpoint, early_stopping, tensorboard],
+        #     verbose=1
+        # )
 
-
-        # epochs = 400
-        # epochs_per_mode = 20
-        # for e in range(epochs / epochs_per_mode):
-        #     mode = np.random.randint(3)
-        #     if mode == 0: # audio-video
-        #         print 'audio-video'
-        #         self.__model.fit(
-        #             x=[mixed_spectrograms, input_video_samples],
-        #             y=[speech_spectrograms, output_video_samples],
-        #             validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-        #             callbacks=[checkpoint, early_stopping, tensorboard],
-        #             verbose=1
-        #         )
-        #     if mode == 1: # audio-only
-        #         print 'audio-only'
-        #         self.__model.fit(
-        #             x=[mixed_spectrograms, np.zeros_like(input_video_samples)],
-        #             y=[speech_spectrograms, output_video_samples],
-        #             validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-        #             callbacks=[checkpoint, early_stopping, tensorboard],
-        #             verbose=1
-        #         )
-        #     if mode == 2: # video-only
-        #         print 'video-only'
-        #         self.__model.fit(
-        #             x=[np.zero_like(mixed_spectrograms), input_video_samples],
-        #             y=[speech_spectrograms, output_video_samples],
-        #             validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-        #             callbacks=[checkpoint, early_stopping, tensorboard],
-        #             verbose=1
-        #         )
+        epochs = 400
+        epochs_per_mode = 10
+        for e in range(epochs / epochs_per_mode):
+            mode = np.random.randint(3)
+            if mode == 0: # audio-video
+                print 'audio-video'
+                self.__model.fit(
+                    x=[mixed_spectrograms, input_video_samples],
+                    y=[speech_spectrograms, output_video_samples],
+                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
+                    callbacks=[checkpoint, early_stopping, tensorboard],
+                    verbose=1
+                )
+            if mode == 1: # audio-only
+                print 'audio-only'
+                self.__audio_only_model.fit(
+                    x=[mixed_spectrograms, np.zeros([N, self.__video_embedding_size])],
+                    y=[speech_spectrograms, output_video_samples],
+                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
+                    callbacks=[checkpoint, early_stopping, tensorboard],
+                    verbose=1
+                )
+            if mode == 2: # video-only
+                print 'video-only'
+                self.__video_only_model.fit(
+                    x=[np.zeros([N, self.__audio_embedding_size]), input_video_samples],
+                    y=[speech_spectrograms, output_video_samples],
+                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
+                    callbacks=[checkpoint, early_stopping, tensorboard],
+                    verbose=1
+                )
 
     def predict(self, mixed_spectrograms, video_samples):
         mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
