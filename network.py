@@ -2,18 +2,21 @@ import os
 
 from keras import optimizers, regularizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling2D, Deconvolution2D
-from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
-from keras.layers.merge import concatenate
+from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, Concatenate
+# from keras.layers.merge import concatenate
 from keras.models import Model, load_model
 from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
-
+import keras.backend as K
 import numpy as np
 
 
 class SpeechEnhancementNetwork(object):
 
-    def __init__(self, model):
+    def __init__(self, model, training_model, audio_embedding_shape=None, video_embedding_shape=None):
         self.__model = model
+        self.__training_model = training_model
+        self.__audio_embedding_shape = audio_embedding_shape
+        self.__video_embedding_shape = video_embedding_shape
 
     @classmethod
     def build(cls, audio_spectrogram_shape, video_shape):
@@ -21,30 +24,40 @@ class SpeechEnhancementNetwork(object):
         extended_audio_spectrogram_shape = list(audio_spectrogram_shape)
         extended_audio_spectrogram_shape.append(1)
 
-        encoder, shared_embedding_size, audio_embedding_shape, video_embedding_shape = cls.__build_encoder(
-            extended_audio_spectrogram_shape, video_shape
-        )
+        encoder, audio_embedding_shape, video_embedding_shape = cls.__build_encoder(extended_audio_spectrogram_shape, video_shape)
+
+        attention, shared_embedding_size = cls.__build_attention(audio_embedding_shape, video_embedding_shape)
 
         decoder = cls.__build_decoder(shared_embedding_size, audio_embedding_shape, video_embedding_shape, video_shape)
 
         audio_input = Input(shape=extended_audio_spectrogram_shape)
         video_input = Input(shape=video_shape)
+        fake_audio_embedding = Input(shape=audio_embedding_shape)
+        fake_video_embedding = Input(shape=video_embedding_shape)
 
-        av_embedding, a_embedding, v_embedding = encoder(audio_input, video_input)
+        audio_embedding, video_embedding = encoder(inputs=[audio_input, video_input])
+
+        av_embedding = attention(inputs=[audio_embedding, video_embedding])
+        a_only_embedding = attention(inputs=[audio_embedding, fake_video_embedding])
+        v_only_embedding = attention(inputs=[fake_audio_embedding, video_embedding])
 
         av_in_a_out, av_in_v_out = decoder(av_embedding)
-        a_in_a_out, a_in_v_out = decoder(a_embedding)
-        v_in_a_out, v_in_v_out = decoder(v_embedding)
+        a_in_a_out, a_in_v_out = decoder(a_only_embedding)
+        v_in_a_out, v_in_v_out = decoder(v_only_embedding)
 
-        model = Model(inputs=[audio_input, video_input], outputs=[av_in_a_out, a_in_a_out, v_in_a_out, av_in_v_out, a_in_v_out, v_in_v_out])
+        mulitmodal_training_model = Model(inputs=[audio_input, video_input, fake_audio_embedding, fake_video_embedding],
+                      outputs=[av_in_a_out, a_in_a_out, v_in_a_out, av_in_v_out, a_in_v_out, v_in_v_out])
 
         optimizer = optimizers.adam(lr=5e-4)
-        model.compile(loss=['mean_squared_error', 'mean_squared_error', 'mean_squared_error', 'mean_squared_error', 'mean_squared_error',
-                            'mean_squared_error'], loss_weights=[1, 1, 1, 0.25, 0.25, 0.25], optimizer=optimizer)
+        mulitmodal_training_model.compile(loss=['mean_squared_error', 'mean_squared_error', 'mean_squared_error',
+                                                'mean_squared_error', 'mean_squared_error','mean_squared_error'],
+                                          loss_weights=[1, 1, 1, 0.25, 0.25, 0.25], optimizer=optimizer)
 
-        model.summary()
+        model = Model(inputs=[audio_input, video_input], outputs=[av_in_a_out, av_in_v_out])
+        model.compile(loss=['mean_squared_error', 'mean_squared_error'], optimizer=optimizers.Adam(lr=5e-4))
+        # model.summary()
 
-        return SpeechEnhancementNetwork(model)
+        return SpeechEnhancementNetwork(model, mulitmodal_training_model, audio_embedding_shape, video_embedding_shape)
 
     @classmethod
     def __build_encoder(cls, extended_audio_spectrogram_shape, video_shape):
@@ -57,16 +70,22 @@ class SpeechEnhancementNetwork(object):
         video_embedding_matrix = cls.__build_video_encoder(video_input)
         video_embedding = Flatten()(video_embedding_matrix)
 
-        # todo: use other value than 0 for the darkened input?
-        audio_visual_in = concatenate([audio_embedding, video_embedding])
-        audio_only_in = concatenate([audio_embedding, np.zeros_like(video_embedding)])
-        video_only_in = concatenate([np.zeros_like(audio_embedding), video_embedding])
+        model = Model(inputs=[audio_input, video_input], outputs=[audio_embedding, video_embedding])
+        model.summary()
 
-        shared_embedding_size = int(audio_visual_in._keras_shape[1] / 2)
+        return model, audio_embedding_matrix.shape[1:].as_list(), video_embedding_matrix.shape[1:].as_list()
 
-        # attention module
-        shared_input = Input(shape=shared_embedding_size)
-        x = Dense(shared_embedding_size)(shared_input)
+    @classmethod
+    def __build_attention(cls, audio_embedding_shape, video_embedding_shape):
+        audio_embedding_size = np.prod(audio_embedding_shape)
+        video_embedding_size = np.prod(video_embedding_shape)
+        shared_embedding_size = (audio_embedding_size + video_embedding_size) / 2
+
+        audio_embedding_input = Input(shape=(audio_embedding_size,))
+        video_embedding_input = Input(shape=(video_embedding_size,))
+
+        x = Concatenate()([audio_embedding_input, video_embedding_input])
+        x = Dense(shared_embedding_size)(x)
         x = BatchNormalization()(x)
         x = LeakyReLU()(x)
         x = Dropout(0.1)(x)
@@ -77,16 +96,10 @@ class SpeechEnhancementNetwork(object):
         x = Dropout(0.1)(x)
         shared_embedding_out = Dense(shared_embedding_size)(x)
 
-        attention = Model(shared_input, shared_embedding_out)
+        model = Model(inputs=[audio_embedding_input, video_embedding_input], outputs=shared_embedding_out)
+        model.summary()
 
-        audio_visual_embedding = attention(audio_visual_in)
-        audio_only_embedding = attention(audio_only_in)
-        video_only_embedding = attention(video_only_in)
-
-        model = Model(inputs=[audio_input, video_input], outputs=[audio_visual_embedding, audio_only_embedding, video_only_embedding])
-        # model.summary()
-
-        return model, shared_embedding_size, audio_embedding_matrix.shape[1:].as_list(), video_embedding_matrix.shape[1:].as_list()
+        return model, shared_embedding_size
 
     @classmethod
     def __build_decoder(cls, shared_embedding_size, audio_embedding_shape, video_embedding_shape, video_shape):
@@ -277,14 +290,14 @@ class SpeechEnhancementNetwork(object):
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
         tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
-        self.__model.fit(
-                    x=[mixed_spectrograms, input_video_samples],
-                    y=[speech_spectrograms, speech_spectrograms, speech_spectrograms,
-                       output_video_samples, output_video_samples, output_video_samples],
-                    validation_split=0.1, batch_size=16, epochs=400,
-                    callbacks=[checkpoint, early_stopping, tensorboard],
-                    verbose=1
-                )
+        self.__training_model.fit(
+            x=[mixed_spectrograms, input_video_samples, np.zeros(self.__audio_embedding_shape), np.zeros(self.__video_embedding_shape)],
+            y=[speech_spectrograms, speech_spectrograms, speech_spectrograms,output_video_samples,
+               output_video_samples, output_video_samples],
+            validation_split=0.1, batch_size=16, epochs=400,
+            callbacks=[checkpoint, early_stopping, tensorboard],
+            verbose=1
+        )
 
 
         # epochs = 400
