@@ -162,7 +162,7 @@ class DataNormalizer(object):
 	@classmethod
 	def apply_normalization(cls, video_samples, audio_samples, normalization_data):
 		cls.apply_video_normalization(video_samples, normalization_data)
-		cls.apply_audio_normalization(audio_samples, normalization_data)
+		# cls.apply_audio_normalization(audio_samples, normalization_data)
 
 	@classmethod
 	def apply_video_normalization(cls, video_samples, normalization_data):
