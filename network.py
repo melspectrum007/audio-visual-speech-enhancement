@@ -289,9 +289,10 @@ class SpeechEnhancementNetwork(object):
 
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
         tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
+        N = mixed_spectrograms.shape[0]
 
         self.__training_model.fit(
-            x=[mixed_spectrograms, input_video_samples, np.zeros(self.__audio_embedding_size), np.zeros(self.__video_embedding_size)],
+            x=[mixed_spectrograms, input_video_samples, np.zeros([N, self.__audio_embedding_size]), np.zeros([N, self.__video_embedding_size])],
             y=[speech_spectrograms, speech_spectrograms, speech_spectrograms,output_video_samples,
                output_video_samples, output_video_samples],
             validation_split=0.1, batch_size=16, epochs=400,
