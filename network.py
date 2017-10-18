@@ -306,7 +306,7 @@ class SpeechEnhancementNetwork(object):
         # )
 
         epochs = 400
-        epochs_per_mode = 10
+        epochs_per_mode = 5
         for e in range(epochs / epochs_per_mode):
             mode = np.random.randint(3)
             if mode == 0: # audio-video
