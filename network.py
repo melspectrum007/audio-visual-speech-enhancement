@@ -12,7 +12,7 @@ import numpy as np
 
 class SpeechEnhancementNetwork(object):
 
-    def __init__(self, model, audio_only_model, video_only_model, audio_embedding_shape=None, video_embedding_shape=None):
+    def __init__(self, model, audio_only_model=None, video_only_model=None, audio_embedding_shape=None, video_embedding_shape=None):
         self.__model = model
         self.__audio_only_model = audio_only_model
         self.__video_only_model = video_only_model
