@@ -33,7 +33,7 @@ class SpeechEnhancementNetwork(object):
 		model = Model(inputs=[audio_input, video_input], outputs=decoder(encoder([audio_input, video_input])))
 
 		optimizer = optimizers.adam(lr=5e-4)
-		model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.25], optimizer=optimizer)
+		model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.1], optimizer=optimizer)
 
 		model.summary()
 
@@ -256,13 +256,13 @@ class SpeechEnhancementNetwork(object):
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.auto_encoder_path(), verbose=1)
 
-		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
+		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
 		tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
 		self.__model.fit(
 			x=[mixed_spectrograms, input_video_samples],
 			y=[speech_spectrograms, output_video_samples],
-			validation_split=0.1, batch_size=16, epochs=400,
+			validation_split=0.1, batch_size=16, epochs=1000,
 			callbacks=[checkpoint, early_stopping, tensorboard],
 			verbose=1
 		)
