@@ -290,52 +290,61 @@ class SpeechEnhancementNetwork(object):
         speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
 
         model_cache = ModelCache(model_cache_dir)
-        checkpoint = ModelCheckpoint(model_cache.auto_encoder_path(), verbose=1)
+        audio_video_checkpoint = ModelCheckpoint(model_cache.audio_video_model_path(), verbose=1)
+        audio_only_checkpoint = ModelCheckpoint(model_cache.audio_only_model_path(), verbose=1)
+        video_only_checkpoint = ModelCheckpoint(model_cache.video_only_model_path(), verbose=1)
 
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
-        tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
+
+
+        # tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
         N = mixed_spectrograms.shape[0]
 
-        # self.__training_model.fit(
-        #     x=[mixed_spectrograms, input_video_samples, np.zeros([N, self.__audio_embedding_size]), np.zeros([N, self.__video_embedding_size])],
-        #     y=[speech_spectrograms, speech_spectrograms, speech_spectrograms,output_video_samples,
-        #        output_video_samples, output_video_samples],
-        #     validation_split=0.1, batch_size=16, epochs=400,
-        #     callbacks=[checkpoint, early_stopping, tensorboard],
-        #     verbose=1
-        # )
+        audio_video_stopped = False
+        audio_only_stopped  = False
+        video_only_stopped  = False
 
         epochs = 400
-        epochs_per_mode = 5
+        epochs_per_mode = 20
         for e in range(epochs / epochs_per_mode):
-            mode = np.random.randint(3)
-            if mode == 0: # audio-video
                 print 'audio-video'
-                self.__model.fit(
+                history = self.__model.fit(
                     x=[mixed_spectrograms, input_video_samples],
                     y=[speech_spectrograms, output_video_samples],
                     validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-                    callbacks=[checkpoint, early_stopping, tensorboard],
+                    callbacks=[audio_video_checkpoint, early_stopping],
                     verbose=1
                 )
-            if mode == 1: # audio-only
+                audio_video_stopped = SpeechEnhancementNetwork.stopped_early(history, epochs_per_mode)
+                if audio_video_stopped and audio_only_stopped and video_only_stopped:
+                    print ('all models early stopping')
+                    break
+
                 print 'audio-only'
-                self.__audio_only_model.fit(
+                history = self.__audio_only_model.fit(
                     x=[mixed_spectrograms, np.zeros([N, self.__video_embedding_size])],
                     y=[speech_spectrograms, output_video_samples],
                     validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-                    callbacks=[checkpoint, early_stopping, tensorboard],
+                    callbacks=[audio_only_checkpoint, early_stopping],
                     verbose=1
                 )
-            if mode == 2: # video-only
+                audio_only_stopped = SpeechEnhancementNetwork.stopped_early(history, epochs_per_mode)
+                if audio_video_stopped and audio_only_stopped and video_only_stopped:
+                    print ('all models early stopping')
+                    break
+
                 print 'video-only'
-                self.__video_only_model.fit(
+                history = self.__video_only_model.fit(
                     x=[np.zeros([N, self.__audio_embedding_size]), input_video_samples],
                     y=[speech_spectrograms, output_video_samples],
                     validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-                    callbacks=[checkpoint, early_stopping, tensorboard],
+                    callbacks=[video_only_checkpoint, early_stopping],
                     verbose=1
                 )
+                video_only_stopped = SpeechEnhancementNetwork.stopped_early(history, epochs_per_mode)
+                if audio_video_stopped and audio_only_stopped and video_only_stopped:
+                    print ('all models early stopping')
+                    break
 
     def predict(self, mixed_spectrograms, video_samples):
         mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
@@ -346,14 +355,22 @@ class SpeechEnhancementNetwork(object):
     @staticmethod
     def load(model_cache_dir):
         model_cache = ModelCache(model_cache_dir)
-        auto_encoder = load_model(model_cache.auto_encoder_path())
+        auto_encoder = load_model(model_cache.audio_video_model_path())
 
         return SpeechEnhancementNetwork(auto_encoder)
 
     def save(self, model_cache_dir):
         model_cache = ModelCache(model_cache_dir)
 
-        self.__model.save(model_cache.auto_encoder_path())
+        self.__model.save(model_cache.audio_video_model_path())
+
+    @staticmethod
+    def stopped_early(history, epochs_per_mode):
+        if len(history.history['loss']) < epochs_per_mode:
+            return True
+        return False
+
+
 
 
 class ModelCache(object):
@@ -361,5 +378,12 @@ class ModelCache(object):
     def __init__(self, cache_dir):
         self.__cache_dir = cache_dir
 
-    def auto_encoder_path(self):
-        return os.path.join(self.__cache_dir, "auto_encoder.h5py")
+    def audio_video_model_path(self):
+        return os.path.join(self.__cache_dir, "audio_video_model.h5py")
+
+    def audio_only_model_path(self):
+        return os.path.join(self.__cache_dir, "audio_only_model.h5py")
+
+    def video_only_model_path(self):
+        return os.path.join(self.__cache_dir, "video_only_model.h5py")
+
