@@ -319,7 +319,7 @@ class SpeechEnhancementNetwork(object):
                     verbose=1
                 )
                 audio_video_val_loss = np.append(audio_video_val_loss, history.history['val_loss'])
-                if SpeechEnhancementNetwork.check_early_stopping(audio_video_val_loss, patience=10, delta=0.1):
+                if SpeechEnhancementNetwork.check_early_stopping(audio_video_val_loss, patience=epochs_per_mode, delta=0.1):
                     print 'Early stopping'
                     break
 
@@ -369,9 +369,9 @@ class SpeechEnhancementNetwork(object):
 
     @staticmethod
     def check_early_stopping(loss, patience, delta):
-        min_val = loss.min() - delta
+        head = loss[:-patience]
         tail = loss[-patience:]
-        return not np.any(tail <= min_val)
+        return tail.min() <= head.min() - delta
 
     @staticmethod
     def __split_train_validation_data(arrays, validation_split):
