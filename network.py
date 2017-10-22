@@ -299,14 +299,9 @@ class SpeechEnhancementNetwork(object):
         audio_only_checkpoint = ModelCheckpoint(model_cache.audio_only_model_path(), verbose=1)
         video_only_checkpoint = ModelCheckpoint(model_cache.video_only_model_path(), verbose=1)
 
-        # early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
-
-        # tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
         N = mixed_spectrograms.shape[0]
 
         audio_video_val_loss = np.array([])
-        # audio_only_stopped  = np.array([])
-        # video_only_stopped  = np.array([])
 
         epochs = 400
         epochs_per_mode = 20
