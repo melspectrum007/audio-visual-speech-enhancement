@@ -53,13 +53,13 @@ class SpeechEnhancementNetwork(object):
 
         # compiling models
         audio_visual_model = Model(inputs=[audio_input, video_input], outputs=[av_in_a_out, av_in_v_out])
-        audio_visual_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.25], optimizer=optimizers.Adam(lr=5e-4))
+        audio_visual_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.1], optimizer=optimizers.Adam(lr=5e-4))
 
         audio_only_model = Model(inputs=[audio_input, fake_video_embedding], outputs=[a_in_a_out, a_in_v_out])
-        audio_only_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.25], optimizer=optimizers.Adam(lr=5e-4))
+        audio_only_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.1], optimizer=optimizers.Adam(lr=5e-4))
 
         video_only_model = Model(inputs=[fake_audio_embedding, video_input], outputs=[v_in_a_out, v_in_v_out])
-        video_only_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.25], optimizer=optimizers.Adam(lr=5e-4))
+        video_only_model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.1], optimizer=optimizers.Adam(lr=5e-4))
 
         return SpeechEnhancementNetwork(audio_visual_model, audio_only_model, video_only_model, audio_embedding_shape, video_embedding_shape)
 
@@ -289,62 +289,70 @@ class SpeechEnhancementNetwork(object):
         mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
         speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
 
+        train_data, val_data = SpeechEnhancementNetwork.__split_train_validation_data([mixed_spectrograms, input_video_samples,
+                                                                                       speech_spectrograms, output_video_samples], validation_split=0.1)
+        train_mixed_spectrograms, train_input_video_samples, train_speech_spectrograms, train_output_video_samples = train_data
+        val_mixed_spectrograms, val_input_video_samples, val_speech_spectrograms, val_output_video_samples = val_data
+
         model_cache = ModelCache(model_cache_dir)
         audio_video_checkpoint = ModelCheckpoint(model_cache.audio_video_model_path(), verbose=1)
         audio_only_checkpoint = ModelCheckpoint(model_cache.audio_only_model_path(), verbose=1)
         video_only_checkpoint = ModelCheckpoint(model_cache.video_only_model_path(), verbose=1)
 
-        early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
-
+        # early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.1, patience=10, verbose=1)
 
         # tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
         N = mixed_spectrograms.shape[0]
 
-        audio_video_stopped = False
-        audio_only_stopped  = False
-        video_only_stopped  = False
+        audio_video_val_loss = np.array([])
+        # audio_only_stopped  = np.array([])
+        # video_only_stopped  = np.array([])
 
         epochs = 400
         epochs_per_mode = 20
         for e in range(epochs / epochs_per_mode):
                 print 'audio-video'
                 history = self.__model.fit(
-                    x=[mixed_spectrograms, input_video_samples],
-                    y=[speech_spectrograms, output_video_samples],
-                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-                    callbacks=[audio_video_checkpoint, early_stopping],
+                    x=[train_mixed_spectrograms, train_input_video_samples],
+                    y=[train_speech_spectrograms, train_output_video_samples],
+                    validation_data=[
+                        [val_mixed_spectrograms, val_input_video_samples],
+                        [val_speech_spectrograms, val_output_video_samples]
+                    ],
+                    batch_size=16, epochs=epochs_per_mode,
+                    callbacks=[audio_video_checkpoint],
                     verbose=1
                 )
-                audio_video_stopped = SpeechEnhancementNetwork.stopped_early(history, epochs_per_mode)
-                if audio_video_stopped and audio_only_stopped and video_only_stopped:
-                    print ('all models early stopping')
+                audio_video_val_loss = np.append(audio_video_val_loss, history.history['val_loss'])
+                if SpeechEnhancementNetwork.check_early_stopping(audio_video_val_loss, patience=10, delta=0.1):
+                    print 'Early stopping'
                     break
 
                 print 'audio-only'
-                history = self.__audio_only_model.fit(
-                    x=[mixed_spectrograms, np.zeros([N, self.__video_embedding_size])],
-                    y=[speech_spectrograms, output_video_samples],
-                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-                    callbacks=[audio_only_checkpoint, early_stopping],
+                self.__audio_only_model.fit(
+                    x=[train_mixed_spectrograms, np.zeros([N, self.__video_embedding_size])],
+                    y=[train_speech_spectrograms, train_output_video_samples],
+                    validation_data=[
+                        [val_mixed_spectrograms, np.zeros([N, self.__video_embedding_size])],
+                        [val_speech_spectrograms, val_output_video_samples]
+                    ],
+                    batch_size=16, epochs=epochs_per_mode,
+                    callbacks=[audio_only_checkpoint],
                     verbose=1
                 )
-                audio_only_stopped = SpeechEnhancementNetwork.stopped_early(history, epochs_per_mode)
-                if audio_video_stopped and audio_only_stopped and video_only_stopped:
-                    print ('all models early stopping')
-                    break
 
                 print 'video-only'
-                history = self.__video_only_model.fit(
-                    x=[np.zeros([N, self.__audio_embedding_size]), input_video_samples],
-                    y=[speech_spectrograms, output_video_samples],
-                    validation_split=0.1, batch_size=16, epochs=epochs_per_mode,
-                    callbacks=[video_only_checkpoint, early_stopping],
+                self.__video_only_model.fit(
+                    x=[np.zeros([N, self.__audio_embedding_size]), train_input_video_samples],
+                    y=[train_speech_spectrograms, train_output_video_samples],
+                    validation_data=[
+                        [np.zeros([N, self.__audio_embedding_size]), val_input_video_samples],
+                        [val_speech_spectrograms, val_output_video_samples]
+                    ],
+                    batch_size=16, epochs=epochs_per_mode,
+                    callbacks=[video_only_checkpoint],
                     verbose=1
                 )
-                video_only_stopped = SpeechEnhancementNetwork.stopped_early(history, epochs_per_mode)
-                if audio_video_stopped and audio_only_stopped and video_only_stopped:
-                    print ('all models early stopping')
-                    break
 
     def predict(self, mixed_spectrograms, video_samples):
         mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
@@ -365,12 +373,23 @@ class SpeechEnhancementNetwork(object):
         self.__model.save(model_cache.audio_video_model_path())
 
     @staticmethod
-    def stopped_early(history, epochs_per_mode):
-        if len(history.history['loss']) < epochs_per_mode:
-            return True
-        return False
+    def check_early_stopping(loss, patience, delta):
+        min_val = loss.min() - delta
+        tail = loss[-patience:]
+        return not np.any(tail <= min_val)
 
+    @staticmethod
+    def __split_train_validation_data(arrays, validation_split):
+        n_samples = arrays[0].shape[0]
+        permutation = np.random.permutation(n_samples)
+        validation_size = int(validation_split * n_samples)
+        validation_indices = permutation[:validation_size]
+        train_indices = permutation[validation_size:]
 
+        train_arrays = [a[train_indices] for a in arrays]
+        validation_arrays = [a[validation_indices] for a in arrays]
+
+        return train_arrays, validation_arrays
 
 
 class ModelCache(object):
