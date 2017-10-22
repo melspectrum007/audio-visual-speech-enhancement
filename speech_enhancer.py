@@ -186,14 +186,18 @@ def list_speakers(args):
     return speaker_ids
 
 
-def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None):
+def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, self_noise_split=0.5):
     speech_dataset = AudioVisualDataset(dataset_dir)
     speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle=True)
 
     noise_dataset = AudioDataset(noise_dirs)
     noise_file_paths = noise_dataset.subset(max_files, shuffle=True)
-
     n_files = min(speech_subset.size(), len(noise_file_paths))
+    if self_noise_split > 0.0:
+        self_noise_paths = speech_subset.audio_paths()
+        n_self_noise = int(n_files * self_noise_split)
+        noise_file_paths[:n_self_noise] = self_noise_paths[-n_self_noise:]
+
 
     return speech_subset.video_paths()[:n_files], speech_subset.audio_paths()[:n_files], noise_file_paths[:n_files]
 
