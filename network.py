@@ -29,7 +29,7 @@ class SpeechEnhancementNetwork(object):
         audio_encoder, audio_embedding_shape = cls.__build_audio_encoder(extended_audio_spectrogram_shape)
         video_encoder, video_embedding_shape = cls.__build_video_encoder(video_shape)
         attention, shared_embedding_size = cls.__build_attention(audio_embedding_shape, video_embedding_shape)
-        decoder = cls.__build_decoder(shared_embedding_size, audio_embedding_shape, video_embedding_shape, video_shape)
+        decoder = cls.__build_decoder(shared_embedding_size, audio_embedding_shape)
 
         # create possible inputs
         audio_input = Input(shape=extended_audio_spectrogram_shape)
@@ -175,7 +175,7 @@ class SpeechEnhancementNetwork(object):
         return model, shared_embedding_size
 
     @classmethod
-    def __build_decoder(cls, shared_embedding_size, audio_embedding_shape, video_embedding_shape, video_shape):
+    def __build_decoder(cls, shared_embedding_size, audio_embedding_shape):
         shared_embedding_input = Input(shape=(shared_embedding_size,))
 
         x = Dense(shared_embedding_size)(shared_embedding_input)
@@ -189,7 +189,6 @@ class SpeechEnhancementNetwork(object):
         x = Dropout(0.1)(x)
 
         audio_embedding_size = np.prod(audio_embedding_shape)
-        # video_embedding_size = np.prod(video_embedding_shape)
 
         a = Dense(audio_embedding_size)(x)
         a = Reshape(audio_embedding_shape)(a)
@@ -197,14 +196,7 @@ class SpeechEnhancementNetwork(object):
         a = LeakyReLU()(a)
         audio_embedding = Dropout(0.1)(a)
 
-        # v = Dense(video_embedding_size)(x)
-        # v = Reshape(video_embedding_shape)(v)
-        # v = BatchNormalization()(v)
-        # v = LeakyReLU()(v)
-        # video_embedding = Dropout(0.1)(v)
-
         audio_output = cls.__build_audio_decoder(audio_embedding)
-        # video_output = cls.__build_video_decoder(video_embedding, video_shape)
 
         model = Model(inputs=shared_embedding_input, outputs=[audio_output])
         model.summary()
