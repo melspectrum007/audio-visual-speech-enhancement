@@ -297,8 +297,6 @@ class SpeechEnhancementNetwork(object):
         audio_only_checkpoint = ModelCheckpoint(model_cache.audio_only_model_path(), verbose=1)
         video_only_checkpoint = ModelCheckpoint(model_cache.video_only_model_path(), verbose=1)
 
-        N = mixed_spectrograms.shape[0]
-
         audio_video_val_loss = np.array([])
 
         epochs = 400
@@ -323,10 +321,10 @@ class SpeechEnhancementNetwork(object):
 
                 print 'audio-only'
                 self.__audio_only_model.fit(
-                    x=[train_mixed_spectrograms, np.zeros([N, self.__video_embedding_size])],
+                    x=[train_mixed_spectrograms, np.zeros([train_mixed_spectrograms.shape[0], self.__video_embedding_size])],
                     y=[train_speech_spectrograms],
                     validation_data=[
-                        [val_mixed_spectrograms, np.zeros([N, self.__video_embedding_size])],
+                        [val_mixed_spectrograms, np.zeros([val_mixed_spectrograms.shape[0], self.__video_embedding_size])],
                         [val_speech_spectrograms]
                     ],
                     batch_size=16, epochs=epochs_per_mode,
@@ -336,10 +334,10 @@ class SpeechEnhancementNetwork(object):
 
                 print 'video-only'
                 self.__video_only_model.fit(
-                    x=[np.zeros([N, self.__audio_embedding_size]), train_input_video_samples],
+                    x=[np.zeros([train_input_video_samples.shape[0], self.__audio_embedding_size]), train_input_video_samples],
                     y=[train_speech_spectrograms],
                     validation_data=[
-                        [np.zeros([N, self.__audio_embedding_size]), val_input_video_samples],
+                        [np.zeros([val_input_video_samples.shape[0], self.__audio_embedding_size]), val_input_video_samples],
                         [val_speech_spectrograms]
                     ],
                     batch_size=16, epochs=epochs_per_mode,
@@ -367,6 +365,8 @@ class SpeechEnhancementNetwork(object):
 
     @staticmethod
     def check_early_stopping(loss, patience, delta):
+        if loss.size <= patience:
+            return False
         head = loss[:-patience]
         tail = loss[-patience:]
         return tail.min() <= head.min() - delta
