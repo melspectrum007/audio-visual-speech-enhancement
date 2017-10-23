@@ -361,7 +361,7 @@ class SpeechEnhancementNetwork(object):
             return False
         head = loss[:-patience]
         tail = loss[-patience:]
-        return tail.min() <= head.min() - delta
+        return tail.min() > (head.min() - delta)
 
     @staticmethod
     def __split_train_validation_data(arrays, validation_split):
