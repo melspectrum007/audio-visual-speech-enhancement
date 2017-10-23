@@ -317,12 +317,7 @@ class SpeechEnhancementNetwork(object):
                     verbose=1
                 )
 
-                print 'Keys: ', history.history.keys()
-                print 'loss: ', history.history['val_loss']
-
-                print audio_video_val_loss
                 audio_video_val_loss = np.append(audio_video_val_loss, history.history['val_loss'])
-                print audio_video_val_loss
                 if SpeechEnhancementNetwork.check_early_stopping(audio_video_val_loss, patience=epochs_per_mode, delta=0.1):
                     print 'Early stopping'
                     break
