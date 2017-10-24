@@ -33,7 +33,7 @@ class SpeechEnhancementNetwork(object):
 		model = Model(inputs=[audio_input, video_input], outputs=decoder(encoder([audio_input, video_input])))
 
 		optimizer = optimizers.adam(lr=5e-4)
-		model.compile(loss=['mean_squared_error', 'mean_squared_error'], loss_weights=[1, 0.1], optimizer=optimizer)
+		model.compile(loss='mean_squared_error', optimizer=optimizer)
 
 		model.summary()
 
@@ -85,7 +85,7 @@ class SpeechEnhancementNetwork(object):
 		x = Dropout(0.1)(x)
 
 		audio_embedding_size = np.prod(audio_embedding_shape)
-		video_embedding_size = np.prod(video_embedding_shape)
+		# video_embedding_size = np.prod(video_embedding_shape)
 
 		a = Dense(audio_embedding_size)(x)
 		a = Reshape(audio_embedding_shape)(a)
@@ -93,16 +93,16 @@ class SpeechEnhancementNetwork(object):
 		a = LeakyReLU()(a)
 		audio_embedding = Dropout(0.1)(a)
 
-		v = Dense(video_embedding_size)(x)
-		v = Reshape(video_embedding_shape)(v)
-		v = BatchNormalization()(v)
-		v = LeakyReLU()(v)
-		video_embedding = Dropout(0.1)(v)
+		# v = Dense(video_embedding_size)(x)
+		# v = Reshape(video_embedding_shape)(v)
+		# v = BatchNormalization()(v)
+		# v = LeakyReLU()(v)
+		# video_embedding = Dropout(0.1)(v)
 
 		audio_output = cls.__build_audio_decoder(audio_embedding)
-		video_output = cls.__build_video_decoder(video_embedding, video_shape)
+		# video_output = cls.__build_video_decoder(video_embedding, video_shape)
 
-		model = Model(inputs=shared_embedding_input, outputs=[audio_output, video_output])
+		model = Model(inputs=shared_embedding_input, outputs=audio_output)
 		model.summary()
 
 		return model
@@ -205,49 +205,48 @@ class SpeechEnhancementNetwork(object):
 
 		return x
 
-	@staticmethod
-	def __build_video_decoder(embedding, video_shape):
-		x = Deconvolution2D(512, kernel_size=(3, 3), padding='same')(embedding)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.1)(x)
+	# @staticmethod
+	# def __build_video_decoder(embedding, video_shape):
+	# 	x = Deconvolution2D(512, kernel_size=(3, 3), padding='same')(embedding)
+	# 	x = BatchNormalization()(x)
+	# 	x = LeakyReLU()(x)
+	# 	x = Dropout(0.1)(x)
+	#
+	# 	x = Deconvolution2D(512, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
+	# 	x = BatchNormalization()(x)
+	# 	x = LeakyReLU()(x)
+	# 	x = Dropout(0.1)(x)
+	#
+	# 	x = Deconvolution2D(512, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
+	# 	x = BatchNormalization()(x)
+	# 	x = LeakyReLU()(x)
+	# 	x = Dropout(0.1)(x)
+	#
+	# 	x = Deconvolution2D(256, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
+	# 	x = BatchNormalization()(x)
+	# 	x = LeakyReLU()(x)
+	# 	x = Dropout(0.1)(x)
+	#
+	# 	x = Deconvolution2D(256, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
+	# 	x = BatchNormalization()(x)
+	# 	x = LeakyReLU()(x)
+	# 	x = Dropout(0.1)(x)
+	#
+	# 	x = Deconvolution2D(128, kernel_size=(5, 5), strides=(2, 2), padding='same')(x)
+	# 	x = BatchNormalization()(x)
+	# 	x = LeakyReLU()(x)
+	# 	x = Dropout(0.1)(x)
+	#
+	# 	x = Deconvolution2D(128, kernel_size=(5, 5), strides=(2, 2), padding='same')(x)
+	# 	x = BatchNormalization()(x)
+	# 	x = LeakyReLU()(x)
+	# 	x = Dropout(0.1)(x)
+	#
+	# 	x = Deconvolution2D(video_shape[-1], kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
+	#
+	# 	return x
 
-		x = Deconvolution2D(512, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.1)(x)
-
-		x = Deconvolution2D(512, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.1)(x)
-
-		x = Deconvolution2D(256, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.1)(x)
-
-		x = Deconvolution2D(256, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.1)(x)
-
-		x = Deconvolution2D(128, kernel_size=(5, 5), strides=(2, 2), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.1)(x)
-
-		x = Deconvolution2D(128, kernel_size=(5, 5), strides=(2, 2), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.1)(x)
-
-		x = Deconvolution2D(video_shape[-1], kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
-
-		return x
-
-	def train(self, mixed_spectrograms, input_video_samples,
-			  speech_spectrograms, output_video_samples,
+	def train(self, mixed_spectrograms, input_video_samples, speech_spectrograms,
 			  model_cache_dir, tensorboard_dir):
 
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
@@ -261,7 +260,7 @@ class SpeechEnhancementNetwork(object):
 
 		self.__model.fit(
 			x=[mixed_spectrograms, input_video_samples],
-			y=[speech_spectrograms, output_video_samples],
+			y=speech_spectrograms,
 			validation_split=0.1, batch_size=16, epochs=1000,
 			callbacks=[checkpoint, early_stopping, tensorboard],
 			verbose=1
@@ -269,9 +268,9 @@ class SpeechEnhancementNetwork(object):
 
 	def predict(self, mixed_spectrograms, video_samples):
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
-		speech_spectrograms, recovered_video_samples = self.__model.predict([mixed_spectrograms, video_samples])
+		speech_spectrograms = self.__model.predict([mixed_spectrograms, video_samples])
 
-		return np.squeeze(speech_spectrograms), recovered_video_samples
+		return np.squeeze(speech_spectrograms)
 
 	@staticmethod
 	def load(model_cache_dir):

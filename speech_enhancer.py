@@ -63,8 +63,7 @@ def train(args):
 
 	network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
 	network.train(
-		mixed_spectrograms, normalized_video_samples,
-		speech_spectrograms, video_samples,
+		mixed_spectrograms, normalized_video_samples, speech_spectrograms,
 		args.model_cache_dir, args.tensorboard_dir
 	)
 
@@ -93,15 +92,14 @@ def predict(args):
 
 				video_samples = normalizer.normalize(video_samples)
 
-				predicted_speech_spectrograms, recovered_video_samples = network.predict(mixed_spectrograms, video_samples)
+				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_signal, predicted_speech_spectrograms, video_frame_rate
 				)
 
 				storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path,
-					mixed_signal, predicted_speech_signal,
-					video_frame_rate, recovered_video_samples
+					mixed_signal, predicted_speech_signal
 				)
 
 			except Exception:
@@ -123,8 +121,7 @@ class PredictionStorage(object):
 		return speaker_dir
 
 	def save_prediction(self, speaker_id, video_file_path, noise_file_path,
-						mixed_signal, predicted_speech_signal,
-						video_frame_rate, recovered_video_samples):
+						mixed_signal, predicted_speech_signal):
 
 		speaker_dir = self.__create_speaker_dir(speaker_id)
 
@@ -143,21 +140,12 @@ class PredictionStorage(object):
 		video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
 		mixture_video_path = os.path.join(sample_prediction_dir, "mixture" + video_extension)
 		enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
-		temp_recovered_video_path = os.path.join(sample_prediction_dir, "tmp_recovered" + video_extension)
-		recovered_video_path = os.path.join(sample_prediction_dir, "recovered" + video_extension)
-
-		with VideoFileWriter(temp_recovered_video_path, video_frame_rate) as writer:
-			for s in range(recovered_video_samples.shape[0]):
-				for f in range(recovered_video_samples.shape[3]):
-					writer.write_frame(recovered_video_samples[s, :, :, f])
 
 		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
 		ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
-		ffmpeg.merge(temp_recovered_video_path, enhanced_speech_audio_path, recovered_video_path)
 
 		os.unlink(mixture_audio_path)
 		os.unlink(enhanced_speech_audio_path)
-		os.unlink(temp_recovered_video_path)
 
 
 def list_speakers(args):
