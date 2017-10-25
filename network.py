@@ -357,14 +357,20 @@ class SpeechEnhancementNetwork(object):
     @staticmethod
     def load(model_cache_dir):
         model_cache = ModelCache(model_cache_dir)
-        auto_encoder = load_model(model_cache.audio_video_model_path())
+        audio_video_model = load_model(model_cache.audio_video_model_path())
+        audio_only_model = load_model(model_cache.audio_only_model_path())
+        video_only_model = load_model(model_cache.video_only_model_path())
 
-        return SpeechEnhancementNetwork(auto_encoder)
+
+        return SpeechEnhancementNetwork(audio_video_model, audio_only_model, video_only_model, audio_embedding_shape=(1600,),
+                                        video_embedding_shape=(2048,))
 
     def save(self, model_cache_dir):
         model_cache = ModelCache(model_cache_dir)
 
         self.__model.save(model_cache.audio_video_model_path())
+        self.__audio_only_model.save(model_cache.audio_only_model_path())
+        self.__video_only_model.save(model_cache.video_only_model_path())
 
     @staticmethod
     def check_early_stopping(loss, patience, delta):

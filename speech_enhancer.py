@@ -69,7 +69,8 @@ def train(args):
     ind = np.random.choice(n_train, n_clean, replace=False)
     mixed_spectrograms[ind] = speech_spectrograms[ind]
 
-    network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
+    # network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
+    network = SpeechEnhancementNetwork.load(args.model_cache_dir)
     network.train(
         mixed_spectrograms, normalized_video_samples,
         speech_spectrograms, video_samples,
