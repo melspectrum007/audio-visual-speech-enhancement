@@ -10,7 +10,6 @@ from dataset import AudioVisualDataset, AudioDataset
 from network import SpeechEnhancementNetwork
 
 from mediaio import ffmpeg
-from mediaio.video_io import VideoFileWriter
 
 
 def preprocess(args):
@@ -191,8 +190,6 @@ def main():
 	train_parser.add_argument("--normalization_cache", type=str, required=True)
 	train_parser.add_argument("--model_cache_dir", type=str, required=True)
 	train_parser.add_argument("--tensorboard_dir", type=str, required=True)
-	# train_parser.add_argument("--speakers", nargs="+", type=str)
-	# train_parser.add_argument("--ignored_speakers", nargs="+", type=str)
 	train_parser.set_defaults(func=train)
 
 	predict_parser = action_parsers.add_parser("predict")
