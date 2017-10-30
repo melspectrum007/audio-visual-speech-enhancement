@@ -222,6 +222,14 @@ class SpeechEnhancementNetwork(object):
 
 		return np.squeeze(speech_spectrograms)
 
+	def evaluate(self, mixed_spectrograms, video_samples, speech_spectrograms):
+		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
+		speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
+		
+		loss = self.__model.evaluate(x=[mixed_spectrograms, video_samples], y=speech_spectrograms)
+
+		return loss
+
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
