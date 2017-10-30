@@ -2,7 +2,7 @@ import os
 
 from keras import optimizers, regularizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling2D, Deconvolution2D
-from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
+from keras.layers import Activation, Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, multiply
 from keras.layers.merge import concatenate
 from keras.models import Model, load_model
 from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
@@ -30,7 +30,11 @@ class SpeechEnhancementNetwork(object):
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
 
-		model = Model(inputs=[audio_input, video_input], outputs=decoder(encoder([audio_input, video_input])))
+		mask = decoder(encoder([audio_input, video_input]))
+
+		audio_output = multiply([audio_input, mask])
+
+		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
 
 		optimizer = optimizers.adam(lr=5e-4)
 		model.compile(loss='mean_squared_error', optimizer=optimizer)
@@ -151,6 +155,7 @@ class SpeechEnhancementNetwork(object):
 		x = LeakyReLU()(x)
 
 		x = Deconvolution2D(1, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
+		x = Activation('sigmoid')(x)
 
 		return x
 
