@@ -1,6 +1,6 @@
 import os
 
-from keras import optimizers, regularizers
+from keras import optimizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling2D, Deconvolution2D
 from keras.layers import Activation, Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, multiply
 from keras.layers.merge import concatenate
@@ -202,7 +202,7 @@ class SpeechEnhancementNetwork(object):
 		x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = Dropout(0.5)(x)
+		x = Dropout(0.25)(x)
 
 		return x
 
