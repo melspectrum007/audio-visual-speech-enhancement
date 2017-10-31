@@ -199,7 +199,7 @@ class SpeechEnhancementNetwork(object):
 		x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = Dropout(0.5)(x)
+		x = Dropout(0.25)(x)
 
 		return x
 
