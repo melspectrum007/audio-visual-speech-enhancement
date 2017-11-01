@@ -2,10 +2,10 @@ import os
 
 from keras import optimizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling2D, Deconvolution2D
-from keras.layers import Activation, Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
+from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
 from keras.layers.merge import concatenate
 from keras.models import Model, load_model
-from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
 
 import numpy as np
 
@@ -212,14 +212,16 @@ class SpeechEnhancementNetwork(object):
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
 
+		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0, verbose=1)
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
+
 		tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
 		self.__model.fit(
 			x=[mixed_spectrograms, input_video_samples],
 			y=speech_spectrograms,
 			validation_split=0.1, batch_size=16, epochs=1000,
-			callbacks=[checkpoint, early_stopping, tensorboard],
+			callbacks=[checkpoint, lr_decay, early_stopping, tensorboard],
 			verbose=1
 		)
 
