@@ -212,8 +212,8 @@ class SpeechEnhancementNetwork(object):
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
 
-		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0, verbose=1)
-		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
+		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
+		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=20, verbose=1)
 
 		tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
