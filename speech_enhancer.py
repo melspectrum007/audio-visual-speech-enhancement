@@ -2,6 +2,7 @@ import argparse
 import os
 from datetime import datetime
 import logging
+import pickle
 
 import numpy as np
 
@@ -56,9 +57,23 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 def train(args):
 	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_path)
 
-	normalizer = data_processor.VideoNormalizer(video_samples)
-	normalizer.normalize(video_samples)
-	normalizer.save(args.normalization_cache)
+	video_normalizer = data_processor.VideoNormalizer(video_samples)
+	video_normalizer.normalize(video_samples)
+
+	audio_input_normalizer = data_processor.AudioNormalizer(mixed_spectrograms)
+	audio_input_normalizer.normalize(mixed_spectrograms)
+
+	audio_output_normalizer = data_processor.AudioNormalizer(speech_spectrograms)
+	audio_output_normalizer.normalize(speech_spectrograms)
+
+	normalizers = {
+		'video': video_normalizer,
+		'audio_input': audio_input_normalizer,
+		'audio_output': audio_output_normalizer
+	}
+
+	with open(args.normalization_cache, 'wb') as normalization_fd:
+		pickle.dump(normalizers, normalization_fd)
 
 	network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
 	network.train(
@@ -71,9 +86,10 @@ def train(args):
 
 def predict(args):
 	storage = PredictionStorage(args.prediction_output_dir)
-
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
-	normalizer = data_processor.VideoNormalizer.load(args.normalization_cache)
+
+	with open(args.normalization_cache, 'rb') as normalization_fd:
+		normalizers = pickle.load(normalization_fd)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
@@ -89,12 +105,17 @@ def predict(args):
 					video_file_path, speech_file_path, noise_file_path
 				)
 
-				normalizer.normalize(video_samples)
+				normalizers['video'].normalize(video_samples)
+				normalizers['audio_input'].normalize(mixed_spectrograms)
+				normalizers['audio_output'].normalize(speech_spectrograms)
 
 				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
 				print("loss: %f" % loss)
 
 				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
+
+				normalizers['audio_output'].denormalize(predicted_speech_spectrograms)
+
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_signal, predicted_speech_spectrograms, video_frame_rate
 				)
