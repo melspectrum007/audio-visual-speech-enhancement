@@ -56,7 +56,9 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 def train(args):
 	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_path)
 
-	video_samples = video_samples / 255
+	normalizer = data_processor.VideoNormalizer(video_samples)
+	normalizer.normalize(video_samples)
+	normalizer.save(args.normalization_cache)
 
 	network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
 	network.train(
@@ -71,6 +73,7 @@ def predict(args):
 	storage = PredictionStorage(args.prediction_output_dir)
 
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
+	normalizer = data_processor.VideoNormalizer.load(args.normalization_cache)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
@@ -86,7 +89,7 @@ def predict(args):
 					video_file_path, speech_file_path, noise_file_path
 				)
 
-				video_samples = video_samples / 255
+				normalizer.normalize(video_samples)
 
 				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
 				print("loss: %f" % loss)

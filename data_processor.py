@@ -155,14 +155,10 @@ class VideoNormalizer(object):
 		self.__std_image = np.std(video_samples, axis=(0, 3))
 
 	def normalize(self, video_samples):
-		normalized_video_samples = np.copy(video_samples)
-
-		for s in range(normalized_video_samples.shape[0]):
-			for f in range(normalized_video_samples.shape[3]):
-				normalized_video_samples[s, :, :, f] -= self.__mean_image
-				normalized_video_samples[s, :, :, f] /= self.__std_image
-
-		return normalized_video_samples
+		for s in range(video_samples.shape[0]):
+			for f in range(video_samples.shape[3]):
+				video_samples[s, :, :, f] -= self.__mean_image
+				video_samples[s, :, :, f] /= self.__std_image
 
 	def save(self, path):
 		with open(path, 'wb') as normalization_fd:
