@@ -33,12 +33,25 @@ def preprocess(args):
 	)
 
 
-def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
-	with np.load(preprocessed_blob_path) as data:
-		video_samples = data["video_samples"]
-		mixed_spectrograms = data["mixed_spectrograms"]
-		speech_spectrograms = data["speech_spectrograms"]
-		noise_spectrograms = data["noise_spectrograms"]
+def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
+	all_video_samples = []
+	all_mixed_spectrograms = []
+	all_speech_spectrograms = []
+	all_noise_spectrograms = []
+
+	for preprocessed_blob_path in preprocessed_blob_paths:
+		print("loading preprocessed samples from %s" % preprocessed_blob_path)
+		
+		with np.load(preprocessed_blob_path) as data:
+			all_video_samples.append(data["video_samples"])
+			all_mixed_spectrograms.append(data["mixed_spectrograms"])
+			all_speech_spectrograms.append(data["speech_spectrograms"])
+			all_noise_spectrograms.append(data["noise_spectrograms"])
+
+	video_samples = np.concatenate(all_video_samples, axis=0)
+	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
+	speech_spectrograms = np.concatenate(all_speech_spectrograms, axis=0)
+	noise_spectrograms = np.concatenate(all_noise_spectrograms, axis=0)
 
 	permutation = np.random.permutation(video_samples.shape[0])
 	video_samples = video_samples[permutation]
@@ -55,7 +68,7 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 
 
 def train(args):
-	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_path)
+	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_paths)
 
 	video_normalizer = data_processor.VideoNormalizer(video_samples)
 	video_normalizer.normalize(video_samples)
@@ -210,7 +223,7 @@ def main():
 	preprocess_parser.set_defaults(func=preprocess)
 
 	train_parser = action_parsers.add_parser("train")
-	train_parser.add_argument("--preprocessed_blob_path", type=str, required=True)
+	train_parser.add_argument("--preprocessed_blob_paths", nargs="+", type=str, required=True)
 	train_parser.add_argument("--normalization_cache", type=str, required=True)
 	train_parser.add_argument("--model_cache_dir", type=str, required=True)
 	train_parser.add_argument("--tensorboard_dir", type=str, required=True)
