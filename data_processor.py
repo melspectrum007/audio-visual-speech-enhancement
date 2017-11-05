@@ -85,8 +85,7 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	noise_signal.truncate(speech_signal.get_number_of_samples())
 
 	noise_signal.amplify(speech_signal)
-	noise_weight = np.random.uniform(low=0.5, high=1)
-	mixed_signal = AudioMixer.mix([speech_signal, noise_signal], mixing_weights=[1, noise_weight])
+	mixed_signal = AudioMixer.mix([speech_signal, noise_signal], mixing_weights=[1, 1])
 
 	speech_spectrograms = preprocess_audio_signal(speech_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate)
