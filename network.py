@@ -58,14 +58,10 @@ class SpeechEnhancementNetwork(object):
 		x = Dense(shared_embedding_size)(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = Dropout(0.2)(x)
 
 		x = Dense(shared_embedding_size)(x)
 		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.2)(x)
-
-		shared_embedding = Dense(shared_embedding_size)(x)
+		shared_embedding = LeakyReLU()(x)
 
 		model = Model(inputs=[audio_input, video_input], outputs=shared_embedding)
 		model.summary()
@@ -79,12 +75,6 @@ class SpeechEnhancementNetwork(object):
 		x = Dense(shared_embedding_size)(shared_embedding_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		x = Dropout(0.2)(x)
-
-		x = Dense(shared_embedding_size)(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.2)(x)
 
 		audio_embedding_size = np.prod(audio_embedding_shape)
 
@@ -196,7 +186,7 @@ class SpeechEnhancementNetwork(object):
 		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Convolution2D(512, kernel_size=(3, 3), padding='same')(x)
+		x = Convolution2D(256, kernel_size=(3, 3), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
