@@ -176,11 +176,15 @@ class SpeechEnhancementNetwork(object):
 
 		return x
 
-	def train(self, mixed_spectrograms, video_samples, speech_spectrograms,
+	def train(self, train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
+			  validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
 			  model_cache_dir, tensorboard_dir):
 
-		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
-		speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
+		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
+		train_speech_spectrograms = np.expand_dims(train_speech_spectrograms, -1)  # append channels axis
+
+		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
+		validation_speech_spectrograms = np.expand_dims(validation_speech_spectrograms, -1)  # append channels axis
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
@@ -191,9 +195,15 @@ class SpeechEnhancementNetwork(object):
 		tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
 		self.__model.fit(
-			x=[mixed_spectrograms, video_samples],
-			y=speech_spectrograms,
-			validation_split=0.1, batch_size=16, epochs=1000,
+			x=[train_mixed_spectrograms, train_video_samples],
+			y=train_speech_spectrograms,
+
+			validation_data=(
+				[validation_mixed_spectrograms, validation_video_samples],
+				validation_speech_spectrograms
+			),
+
+			batch_size=16, epochs=1000,
 			callbacks=[checkpoint, lr_decay, early_stopping, tensorboard],
 			verbose=1
 		)
