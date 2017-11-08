@@ -114,7 +114,7 @@ def predict(args):
 			try:
 				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
 
-				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, video_frame_rate = data_processor.preprocess_sample(
+				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak, video_frame_rate = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path
 				)
 
@@ -130,7 +130,7 @@ def predict(args):
 				# normalizers['audio_output'].denormalize(predicted_speech_spectrograms)
 
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
-					mixed_signal, predicted_speech_spectrograms, video_frame_rate
+					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak
 				)
 
 				storage.save_prediction(
