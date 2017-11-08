@@ -70,7 +70,7 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rat
 	speech_spectrogram = speech_spectrogram[:, :spectrogram_length]
 	original_phase = original_phase[:, :spectrogram_length]
 
-	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, peak, original_phase)
+	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, original_phase, peak)
 
 
 def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate):
