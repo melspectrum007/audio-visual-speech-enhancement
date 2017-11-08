@@ -68,29 +68,29 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 
 
 def train(args):
-	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_paths)
+	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms, _ = load_preprocessed_samples(
+		args.train_preprocessed_blob_paths
+	)
 
-	video_normalizer = data_processor.VideoNormalizer(video_samples)
-	video_normalizer.normalize(video_samples)
+	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms, _ = load_preprocessed_samples(
+		args.validation_preprocessed_blob_paths
+	)
 
-	# audio_input_normalizer = data_processor.AudioNormalizer(mixed_spectrograms)
-	# audio_input_normalizer.normalize(mixed_spectrograms)
-
-	# audio_output_normalizer = data_processor.AudioNormalizer(speech_spectrograms)
-	# audio_output_normalizer.normalize(speech_spectrograms)
+	video_normalizer = data_processor.VideoNormalizer(train_video_samples)
+	video_normalizer.normalize(train_video_samples)
+	video_normalizer.normalize(validation_video_samples)
 
 	normalizers = {
 		'video': video_normalizer
-		# 'audio_input': audio_input_normalizer
-		# 'audio_output': audio_output_normalizer
 	}
 
 	with open(args.normalization_cache, 'wb') as normalization_fd:
 		pickle.dump(normalizers, normalization_fd)
 
-	network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
+	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
 	network.train(
-		mixed_spectrograms, video_samples, speech_spectrograms,
+		train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
+		validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
 		args.model_cache_dir, args.tensorboard_dir
 	)
 
@@ -119,15 +119,11 @@ def predict(args):
 				)
 
 				normalizers['video'].normalize(video_samples)
-				# normalizers['audio_input'].normalize(mixed_spectrograms)
-				# normalizers['audio_output'].normalize(speech_spectrograms)
 
 				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
 				print("loss: %f" % loss)
 
 				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
-
-				# normalizers['audio_output'].denormalize(predicted_speech_spectrograms)
 
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak
@@ -223,7 +219,8 @@ def main():
 	preprocess_parser.set_defaults(func=preprocess)
 
 	train_parser = action_parsers.add_parser("train")
-	train_parser.add_argument("--preprocessed_blob_paths", nargs="+", type=str, required=True)
+	train_parser.add_argument("--train_preprocessed_blob_paths", nargs="+", type=str, required=True)
+	train_parser.add_argument("--validation_preprocessed_blob_paths", nargs="+", type=str, required=True)
 	train_parser.add_argument("--normalization_cache", type=str, required=True)
 	train_parser.add_argument("--model_cache_dir", type=str, required=True)
 	train_parser.add_argument("--tensorboard_dir", type=str, required=True)
