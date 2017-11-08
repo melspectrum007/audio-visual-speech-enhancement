@@ -1,5 +1,4 @@
 import multiprocess
-import pickle
 
 import numpy as np
 
@@ -80,14 +79,13 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	speech_signal = AudioSignal.from_wav_file(speech_file_path)
 	noise_signal = AudioSignal.from_wav_file(noise_file_path)
 
-	noise_signal.amplify(speech_signal)
-
 	while noise_signal.get_number_of_samples() < speech_signal.get_number_of_samples():
 		noise_signal = AudioSignal.concat([noise_signal, noise_signal])
 
 	noise_signal.truncate(speech_signal.get_number_of_samples())
 
-	mixed_signal = AudioMixer.mix([speech_signal, noise_signal], mixing_weights=[1, 0.5])
+	noise_signal.amplify(speech_signal)
+	mixed_signal = AudioMixer.mix([speech_signal, noise_signal], mixing_weights=[1, 1])
 
 	speech_spectrograms = preprocess_audio_signal(speech_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate)
@@ -147,68 +145,36 @@ def preprocess_data(video_file_paths, speech_file_paths, noise_file_paths):
 	)
 
 
-class DataNormalizer(object):
+class VideoNormalizer(object):
 
-	@classmethod
-	def normalize(cls, video_samples, audio_samples):
-		mean_image, std_image = cls.__init_video_normalization_data(video_samples)
-		mean_spectrogram, std_spectrogram = cls.__init_audio_normalization_data(audio_samples)
-
-		normalization_data = NormalizationData(mean_image, std_image, mean_spectrogram, std_spectrogram)
-		cls.apply_normalization(video_samples, audio_samples, normalization_data)
-
-		return normalization_data
-
-	@classmethod
-	def apply_normalization(cls, video_samples, audio_samples, normalization_data):
-		cls.apply_video_normalization(video_samples, normalization_data)
-		# cls.apply_audio_normalization(audio_samples, normalization_data)
-
-	@classmethod
-	def apply_video_normalization(cls, video_samples, normalization_data):
+	def __init__(self, video_samples):
 		# video_samples: slices x height x width x frames_per_slice
+		self.__mean_image = np.mean(video_samples, axis=(0, 3))
+		self.__std_image = np.std(video_samples, axis=(0, 3))
+
+	def normalize(self, video_samples):
 		for s in range(video_samples.shape[0]):
 			for f in range(video_samples.shape[3]):
-				video_samples[s, :, :, f] -= normalization_data.mean_image
-				video_samples[s, :, :, f] /= normalization_data.std_image
+				video_samples[s, :, :, f] -= self.__mean_image
+				video_samples[s, :, :, f] /= self.__std_image
 
-	@classmethod
-	def apply_audio_normalization(cls, audio_samples, normalization_data):
-		for s in range(audio_samples.shape[0]):
-			audio_samples[s, :, :] -= normalization_data.mean_spectrogram
-			audio_samples[s, :, :] /= normalization_data.std_spectrogram
 
-	@staticmethod
-	def __init_video_normalization_data(video_samples):
-		# video_samples: slices x height x width x frames_per_slice
-		mean_image = np.mean(video_samples, axis=(0, 3))
-		std_image = np.std(video_samples, axis=(0, 3))
+class AudioNormalizer(object):
 
-		return mean_image, std_image
-
-	@staticmethod
-	def __init_audio_normalization_data(audio_samples):
+	def __init__(self, audio_samples):
 		# audio_samples: slices x freqs x time
-		mean_spectrogram = np.mean(audio_samples, axis=0)
-		std_spectrogram = np.std(audio_samples, axis=0)
+		global_spectrogram = np.concatenate(list(audio_samples), axis=1)
+		self.__mean = np.mean(global_spectrogram, axis=1)
+		self.__std = np.std(global_spectrogram, axis=1) + 1e-7
 
-		return mean_spectrogram, std_spectrogram
+	def normalize(self, audio_samples):
+		for s in range(audio_samples.shape[0]):
+			for t in range(audio_samples.shape[2]):
+				audio_samples[s, :, t] -= self.__mean
+				audio_samples[s, :, t] /= self.__std
 
-
-class NormalizationData(object):
-
-	def __init__(self, mean_image, std_image, mean_spectrogram, std_spectrogram):
-		self.mean_image = mean_image
-		self.std_image = std_image
-
-		self.mean_spectrogram = mean_spectrogram
-		self.std_spectrogram = std_spectrogram
-
-	def save(self, path):
-		with open(path, 'wb') as normalization_fd:
-			pickle.dump(self, normalization_fd)
-
-	@staticmethod
-	def load(path):
-		with open(path, 'rb') as normalization_fd:
-			return pickle.load(normalization_fd)
+	def denormalize(self, audio_samples):
+		for s in range(audio_samples.shape[0]):
+			for t in range(audio_samples.shape[2]):
+				audio_samples[s, :, t] *= self.__std
+				audio_samples[s, :, t] += self.__mean

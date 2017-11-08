@@ -2,6 +2,7 @@ import argparse
 import os
 from datetime import datetime
 import logging
+import pickle
 
 import numpy as np
 
@@ -10,7 +11,6 @@ from dataset import AudioVisualDataset, AudioDataset
 from network import SpeechEnhancementNetwork
 
 from mediaio import ffmpeg
-from mediaio.video_io import VideoFileWriter
 
 
 def preprocess(args):
@@ -33,12 +33,25 @@ def preprocess(args):
 	)
 
 
-def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
-	with np.load(preprocessed_blob_path) as data:
-		video_samples = data["video_samples"]
-		mixed_spectrograms = data["mixed_spectrograms"]
-		speech_spectrograms = data["speech_spectrograms"]
-		noise_spectrograms = data["noise_spectrograms"]
+def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
+	all_video_samples = []
+	all_mixed_spectrograms = []
+	all_speech_spectrograms = []
+	all_noise_spectrograms = []
+
+	for preprocessed_blob_path in preprocessed_blob_paths:
+		print("loading preprocessed samples from %s" % preprocessed_blob_path)
+		
+		with np.load(preprocessed_blob_path) as data:
+			all_video_samples.append(data["video_samples"])
+			all_mixed_spectrograms.append(data["mixed_spectrograms"])
+			all_speech_spectrograms.append(data["speech_spectrograms"])
+			all_noise_spectrograms.append(data["noise_spectrograms"])
+
+	video_samples = np.concatenate(all_video_samples, axis=0)
+	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
+	speech_spectrograms = np.concatenate(all_speech_spectrograms, axis=0)
+	noise_spectrograms = np.concatenate(all_noise_spectrograms, axis=0)
 
 	permutation = np.random.permutation(video_samples.shape[0])
 	video_samples = video_samples[permutation]
@@ -55,17 +68,29 @@ def load_preprocessed_samples(preprocessed_blob_path, max_samples=None):
 
 
 def train(args):
-	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_path)
+	video_samples, mixed_spectrograms, speech_spectrograms, _ = load_preprocessed_samples(args.preprocessed_blob_paths)
 
-	normalized_video_samples = np.copy(video_samples)
+	video_normalizer = data_processor.VideoNormalizer(video_samples)
+	video_normalizer.normalize(video_samples)
 
-	normalization_data = data_processor.DataNormalizer.normalize(normalized_video_samples, mixed_spectrograms)
-	normalization_data.save(args.normalization_cache)
+	# audio_input_normalizer = data_processor.AudioNormalizer(mixed_spectrograms)
+	# audio_input_normalizer.normalize(mixed_spectrograms)
+
+	# audio_output_normalizer = data_processor.AudioNormalizer(speech_spectrograms)
+	# audio_output_normalizer.normalize(speech_spectrograms)
+
+	normalizers = {
+		'video': video_normalizer
+		# 'audio_input': audio_input_normalizer
+		# 'audio_output': audio_output_normalizer
+	}
+
+	with open(args.normalization_cache, 'wb') as normalization_fd:
+		pickle.dump(normalizers, normalization_fd)
 
 	network = SpeechEnhancementNetwork.build(mixed_spectrograms.shape[1:], video_samples.shape[1:])
 	network.train(
-		mixed_spectrograms, normalized_video_samples,
-		speech_spectrograms, video_samples,
+		mixed_spectrograms, video_samples, speech_spectrograms,
 		args.model_cache_dir, args.tensorboard_dir
 	)
 
@@ -74,9 +99,10 @@ def train(args):
 
 def predict(args):
 	storage = PredictionStorage(args.prediction_output_dir)
-
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
-	normalization_data = data_processor.NormalizationData.load(args.normalization_cache)
+
+	with open(args.normalization_cache, 'rb') as normalization_fd:
+		normalizers = pickle.load(normalization_fd)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
@@ -88,21 +114,28 @@ def predict(args):
 			try:
 				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
 
-				video_samples, mixed_spectrograms, _, _, mixed_signal, video_frame_rate = data_processor.preprocess_sample(
+				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, video_frame_rate = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path
 				)
 
-				data_processor.DataNormalizer.apply_normalization(video_samples, mixed_spectrograms, normalization_data)
+				normalizers['video'].normalize(video_samples)
+				# normalizers['audio_input'].normalize(mixed_spectrograms)
+				# normalizers['audio_output'].normalize(speech_spectrograms)
 
-				predicted_speech_spectrograms, recovered_video_samples = network.predict(mixed_spectrograms, video_samples)
+				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
+				print("loss: %f" % loss)
+
+				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
+
+				# normalizers['audio_output'].denormalize(predicted_speech_spectrograms)
+
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_signal, predicted_speech_spectrograms, video_frame_rate
 				)
 
 				storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path,
-					mixed_signal, predicted_speech_signal,
-					video_frame_rate, recovered_video_samples
+					mixed_signal, predicted_speech_signal
 				)
 
 			except Exception:
@@ -124,8 +157,7 @@ class PredictionStorage(object):
 		return speaker_dir
 
 	def save_prediction(self, speaker_id, video_file_path, noise_file_path,
-						mixed_signal, predicted_speech_signal,
-						video_frame_rate, recovered_video_samples):
+						mixed_signal, predicted_speech_signal):
 
 		speaker_dir = self.__create_speaker_dir(speaker_id)
 
@@ -144,21 +176,12 @@ class PredictionStorage(object):
 		video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
 		mixture_video_path = os.path.join(sample_prediction_dir, "mixture" + video_extension)
 		enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
-		temp_recovered_video_path = os.path.join(sample_prediction_dir, "tmp_recovered" + video_extension)
-		recovered_video_path = os.path.join(sample_prediction_dir, "recovered" + video_extension)
-
-		with VideoFileWriter(temp_recovered_video_path, video_frame_rate) as writer:
-			for s in range(recovered_video_samples.shape[0]):
-				for f in range(recovered_video_samples.shape[3]):
-					writer.write_frame(recovered_video_samples[s, :, :, f])
 
 		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
 		ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
-		ffmpeg.merge(temp_recovered_video_path, enhanced_speech_audio_path, recovered_video_path)
 
 		os.unlink(mixture_audio_path)
 		os.unlink(enhanced_speech_audio_path)
-		os.unlink(temp_recovered_video_path)
 
 
 def list_speakers(args):
@@ -200,12 +223,10 @@ def main():
 	preprocess_parser.set_defaults(func=preprocess)
 
 	train_parser = action_parsers.add_parser("train")
-	train_parser.add_argument("--preprocessed_blob_path", type=str, required=True)
+	train_parser.add_argument("--preprocessed_blob_paths", nargs="+", type=str, required=True)
 	train_parser.add_argument("--normalization_cache", type=str, required=True)
 	train_parser.add_argument("--model_cache_dir", type=str, required=True)
 	train_parser.add_argument("--tensorboard_dir", type=str, required=True)
-	# train_parser.add_argument("--speakers", nargs="+", type=str)
-	# train_parser.add_argument("--ignored_speakers", nargs="+", type=str)
 	train_parser.set_defaults(func=train)
 
 	predict_parser = action_parsers.add_parser("predict")

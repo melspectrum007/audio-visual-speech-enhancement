@@ -19,7 +19,7 @@ def train(args):
 	cmdline = [
 		'srun', '--mem=%d' % args.mem, '--gres=gpu:%d' % args.gpus, '-c%d' % args.cpus, '--time=%s' % args.time,
 		'--job-name=%s-train' % args.model, '--output=out/train-%s.out' % args.model,
-		'scripts/train.sh', args.model, args.data_name
+		'scripts/train.sh', args.model, ' '.join(args.data_names)
 	]
 
 	print(' '.join(cmdline))
@@ -54,7 +54,7 @@ def main():
 
 	train_parser = action_parsers.add_parser('train')
 	train_parser.add_argument('-mn', '--model', type=str, required=True)
-	train_parser.add_argument('-dn', '--data_name', type=str, required=True)
+	train_parser.add_argument('-dn', '--data_names', nargs='+', type=str, required=True)
 	train_parser.add_argument('-m', '--mem', type=int, default=100000)
 	train_parser.add_argument('-g', '--gpus', type=int, default=1)
 	train_parser.add_argument('-c', '--cpus', type=int, default=4)
