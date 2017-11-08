@@ -88,19 +88,19 @@ class SpeechEnhancementNetwork(object):
 
 	@staticmethod
 	def __build_audio_encoder(audio_input):
-		x = Convolution2D(32, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
+		x = Convolution2D(64, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(32, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
+		x = Convolution2D(64, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(64, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Convolution2D(128, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(64, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+		x = Convolution2D(128, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -116,19 +116,19 @@ class SpeechEnhancementNetwork(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(64, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+		x = Deconvolution2D(128, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(64, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Deconvolution2D(128, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(32, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
+		x = Deconvolution2D(64, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(32, kernel_size=(5, 5), strides=(2, 2), padding='same')(x)
+		x = Deconvolution2D(64, kernel_size=(5, 5), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -176,7 +176,7 @@ class SpeechEnhancementNetwork(object):
 
 		return x
 
-	def train(self, mixed_spectrograms, input_video_samples, speech_spectrograms,
+	def train(self, mixed_spectrograms, video_samples, speech_spectrograms,
 			  model_cache_dir, tensorboard_dir):
 
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
@@ -191,7 +191,7 @@ class SpeechEnhancementNetwork(object):
 		tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
 		self.__model.fit(
-			x=[mixed_spectrograms, input_video_samples],
+			x=[mixed_spectrograms, video_samples],
 			y=speech_spectrograms,
 			validation_split=0.1, batch_size=16, epochs=1000,
 			callbacks=[checkpoint, lr_decay, early_stopping, tensorboard],
