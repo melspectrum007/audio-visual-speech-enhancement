@@ -54,8 +54,8 @@ def main():
 
 	train_parser = action_parsers.add_parser('train')
 	train_parser.add_argument('-mn', '--model', type=str, required=True)
-	train_parser.add_argument('-dn', '--train_data_names', nargs='+', type=str, required=True)
-	train_parser.add_argument('-dn', '--validation_data_names', nargs='+', type=str, required=True)
+	train_parser.add_argument('-tdn', '--train_data_names', nargs='+', type=str, required=True)
+	train_parser.add_argument('-vdn', '--validation_data_names', nargs='+', type=str, required=True)
 	train_parser.add_argument('-m', '--mem', type=int, default=100000)
 	train_parser.add_argument('-g', '--gpus', type=int, default=1)
 	train_parser.add_argument('-c', '--cpus', type=int, default=4)
