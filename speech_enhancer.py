@@ -9,7 +9,7 @@ import numpy as np
 import data_processor
 from dataset import AudioVisualDataset, AudioDataset
 from network import SpeechEnhancementNetwork
-
+from shutil import copy2
 from mediaio import ffmpeg
 
 
@@ -80,8 +80,12 @@ def train(args):
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(validation_video_samples)
 
+	normalizers = {
+		'video': video_normalizer
+	}
+
 	with open(args.normalization_cache, 'wb') as normalization_fd:
-		pickle.dump(video_normalizer, normalization_fd)
+		pickle.dump(normalizers, normalization_fd)
 
 	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
 	network.train(
@@ -98,12 +102,12 @@ def predict(args):
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
 
 	with open(args.normalization_cache, 'rb') as normalization_fd:
-		video_normalizer = pickle.load(normalization_fd)
+		normalizers = pickle.load(normalization_fd)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=10
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=None
 		)
 
 		for video_file_path, speech_file_path, noise_file_path in zip(video_file_paths, speech_file_paths, noise_file_paths):
@@ -114,7 +118,7 @@ def predict(args):
 					video_file_path, speech_file_path, noise_file_path
 				)
 
-				video_normalizer.normalize(video_samples)
+				normalizers['video'].normalize(video_samples)
 
 				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
 				print("loss: %f" % loss)
@@ -126,7 +130,7 @@ def predict(args):
 				)
 
 				storage.save_prediction(
-					speaker_id, video_file_path, noise_file_path,
+					speaker_id, video_file_path, noise_file_path, speech_file_path,
 					mixed_signal, predicted_speech_signal
 				)
 
@@ -148,7 +152,7 @@ class PredictionStorage(object):
 
 		return speaker_dir
 
-	def save_prediction(self, speaker_id, video_file_path, noise_file_path,
+	def save_prediction(self, speaker_id, video_file_path, noise_file_path, speech_file_path,
 						mixed_signal, predicted_speech_signal):
 
 		speaker_dir = self.__create_speaker_dir(speaker_id)
@@ -161,19 +165,24 @@ class PredictionStorage(object):
 
 		mixture_audio_path = os.path.join(sample_prediction_dir, "mixture.wav")
 		enhanced_speech_audio_path = os.path.join(sample_prediction_dir, "enhanced.wav")
+		source_speech_new_audio_path = os.path.join(sample_prediction_dir, "source.wav")
+		copy2(speech_file_path, source_speech_new_audio_path)
+
 
 		mixed_signal.save_to_wav_file(mixture_audio_path)
 		predicted_speech_signal.save_to_wav_file(enhanced_speech_audio_path)
 
 		video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
 		mixture_video_path = os.path.join(sample_prediction_dir, "mixture" + video_extension)
-		enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
+		# enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
 
 		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
-		ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
+		# ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
 
-		os.unlink(mixture_audio_path)
-		os.unlink(enhanced_speech_audio_path)
+		# os.unlink(mixture_audio_path)
+		# os.unlink(enhanced_speech_audio_path)
+
+
 
 
 def list_speakers(args):
