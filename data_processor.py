@@ -161,24 +161,3 @@ class VideoNormalizer(object):
 			for f in range(video_samples.shape[3]):
 				video_samples[s, :, :, f] -= self.__mean_image
 				video_samples[s, :, :, f] /= self.__std_image
-
-
-class AudioNormalizer(object):
-
-	def __init__(self, audio_samples):
-		# audio_samples: slices x freqs x time
-		global_spectrogram = np.concatenate(list(audio_samples), axis=1)
-		self.__mean = np.mean(global_spectrogram, axis=1)
-		self.__std = np.std(global_spectrogram, axis=1) + 1e-7
-
-	def normalize(self, audio_samples):
-		for s in range(audio_samples.shape[0]):
-			for t in range(audio_samples.shape[2]):
-				audio_samples[s, :, t] -= self.__mean
-				audio_samples[s, :, t] /= self.__std
-
-	def denormalize(self, audio_samples):
-		for s in range(audio_samples.shape[0]):
-			for t in range(audio_samples.shape[2]):
-				audio_samples[s, :, t] *= self.__std
-				audio_samples[s, :, t] += self.__mean
