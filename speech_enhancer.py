@@ -80,12 +80,8 @@ def train(args):
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(validation_video_samples)
 
-	normalizers = {
-		'video': video_normalizer
-	}
-
 	with open(args.normalization_cache, 'wb') as normalization_fd:
-		pickle.dump(normalizers, normalization_fd)
+		pickle.dump(video_normalizer, normalization_fd)
 
 	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
 	network.train(
@@ -102,7 +98,7 @@ def predict(args):
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
 
 	with open(args.normalization_cache, 'rb') as normalization_fd:
-		normalizers = pickle.load(normalization_fd)
+		video_normalizer = pickle.load(normalization_fd)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
@@ -114,11 +110,11 @@ def predict(args):
 			try:
 				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
 
-				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, video_frame_rate = data_processor.preprocess_sample(
+				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak, video_frame_rate = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path
 				)
 
-				normalizers['video'].normalize(video_samples)
+				video_normalizer.normalize(video_samples)
 
 				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
 				print("loss: %f" % loss)
@@ -126,7 +122,7 @@ def predict(args):
 				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
 
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
-					mixed_signal, predicted_speech_spectrograms, video_frame_rate
+					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak
 				)
 
 				storage.save_prediction(

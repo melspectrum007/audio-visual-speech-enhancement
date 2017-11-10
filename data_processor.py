@@ -57,7 +57,7 @@ def preprocess_audio_signal(audio_signal, slice_duration_ms, n_video_slices, vid
 	return np.stack(slices)
 
 
-def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rate):
+def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rate, peak):
 	n_fft = int(float(mixed_signal.get_sample_rate()) / video_frame_rate)
 	hop_length = int(n_fft / 4)
 
@@ -70,7 +70,7 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rat
 	speech_spectrogram = speech_spectrogram[:, :spectrogram_length]
 	original_phase = original_phase[:, :spectrogram_length]
 
-	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, original_phase)
+	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, original_phase, peak)
 
 
 def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate):
@@ -87,18 +87,21 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	noise_signal.amplify(speech_signal)
 	mixed_signal = AudioMixer.mix([speech_signal, noise_signal], mixing_weights=[1, 1])
 
+	peak = mixed_signal.peak_normalize()
+	speech_signal.peak_normalize(peak)
+
 	speech_spectrograms = preprocess_audio_signal(speech_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	mixed_spectrograms = preprocess_audio_signal(mixed_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 
-	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal
+	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak
 
 
 def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_duration_ms=200):
 	print("preprocessing sample: %s, %s, %s..." % (video_file_path, speech_file_path, noise_file_path))
 
 	video_samples, video_frame_rate = preprocess_video_sample(video_file_path, slice_duration_ms)
-	mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal = preprocess_audio_pair(
+	mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak = preprocess_audio_pair(
 		speech_file_path, noise_file_path, slice_duration_ms, video_samples.shape[0], video_frame_rate
 	)
 
@@ -110,6 +113,7 @@ def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_
 		speech_spectrograms[:n_slices],
 		noise_spectrograms[:n_slices],
 		mixed_signal,
+		peak,
 		video_frame_rate
 	)
 
@@ -157,24 +161,3 @@ class VideoNormalizer(object):
 			for f in range(video_samples.shape[3]):
 				video_samples[s, :, :, f] -= self.__mean_image
 				video_samples[s, :, :, f] /= self.__std_image
-
-
-class AudioNormalizer(object):
-
-	def __init__(self, audio_samples):
-		# audio_samples: slices x freqs x time
-		global_spectrogram = np.concatenate(list(audio_samples), axis=1)
-		self.__mean = np.mean(global_spectrogram, axis=1)
-		self.__std = np.std(global_spectrogram, axis=1) + 1e-7
-
-	def normalize(self, audio_samples):
-		for s in range(audio_samples.shape[0]):
-			for t in range(audio_samples.shape[2]):
-				audio_samples[s, :, t] -= self.__mean
-				audio_samples[s, :, t] /= self.__std
-
-	def denormalize(self, audio_samples):
-		for s in range(audio_samples.shape[0]):
-			for t in range(audio_samples.shape[2]):
-				audio_samples[s, :, t] *= self.__std
-				audio_samples[s, :, t] += self.__mean
