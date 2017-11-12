@@ -87,6 +87,7 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	noise_signal.amplify(speech_signal)
 	mixed_signal = AudioMixer.mix([speech_signal, noise_signal], mixing_weights=[1, 1])
 
+	original_mixed = AudioSignal(mixed_signal.get_data(), mixed_signal.get_sample_rate())
 	peak = mixed_signal.peak_normalize()
 	speech_signal.peak_normalize(peak)
 
@@ -94,7 +95,9 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	mixed_spectrograms = preprocess_audio_signal(mixed_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 
-	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak
+
+
+	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, original_mixed, peak
 
 
 def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_duration_ms=200):
