@@ -174,8 +174,8 @@ class PredictionStorage(object):
 		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
 		ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
 
-		os.unlink(mixture_audio_path)
-		os.unlink(enhanced_speech_audio_path)
+		# os.unlink(mixture_audio_path)
+		# os.unlink(enhanced_speech_audio_path)
 
 
 def list_speakers(args):
