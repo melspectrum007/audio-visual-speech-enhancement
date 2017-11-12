@@ -95,8 +95,6 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	mixed_spectrograms = preprocess_audio_signal(mixed_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 
-
-
 	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, original_mixed, peak
 
 
