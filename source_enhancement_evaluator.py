@@ -44,6 +44,7 @@ def pesq(pesq_bin_path, source_file_path, enhanced_file_path):
 def evaluate(enhancement_dir_path, pesq_bin_path):
 	enhanced_pesqs = []
 	mixture_pesqs = []
+	nn_pesqs = []
 
 	speaker_dir_names = os.listdir(enhancement_dir_path)
 	for speaker_dir_name in speaker_dir_names:
@@ -54,20 +55,24 @@ def evaluate(enhancement_dir_path, pesq_bin_path):
 			sample_dir_path = os.path.join(speaker_dir_path, sample_dir_name)
 			source_file_path = os.path.join(sample_dir_path, "source.wav")
 			enhanced_file_path = os.path.join(sample_dir_path, "enhanced.wav")
+			nn_file_path = os.path.join(sample_dir_path, 'nn.wav')
 			mixture_file_path = os.path.join(sample_dir_path, "mixture.wav")
 
 			enhanced_mos, _ = pesq(pesq_bin_path, source_file_path, enhanced_file_path)
 			mixture_mos, _ = pesq(pesq_bin_path, source_file_path, mixture_file_path)
+			nn_mos, _ = pesq(pesq_bin_path, source_file_path, nn_file_path)
 
-			print 'mixture pesq: ', mixture_mos, 'enhanced pesq: ', enhanced_mos
+			print 'mixture pesq: ', mixture_mos, 'enhanced pesq: ', enhanced_mos, 'nn pesq: ', nn_mos
 			if enhanced_mos is None or mixture_mos is None:
 				continue
 			else:
 				enhanced_pesqs.append(enhanced_mos)
 				mixture_pesqs.append(mixture_mos)
+				nn_pesqs.append(nn_mos)
 
-	print 'mean enhanced pesq: ', np.mean(enhanced_pesqs), 'std enhanced pesq: ', np.std(enhanced_pesqs)
-	print 'mean mixture pesq: ', np.mean(mixture_pesqs), 'std mixture pesq: ', np.std(mixture_pesqs)
+	print 'mean enhanced pesq: ', np.mean(enhanced_pesqs)
+	print 'mean nn pesq: ', np.mean(nn_pesqs)
+	print 'mean mixture pesq: ', np.mean(mixture_pesqs)
 	# print('pesqs', enhanced_pesqs)
 
 

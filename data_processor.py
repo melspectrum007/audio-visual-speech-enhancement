@@ -56,22 +56,29 @@ def preprocess_audio_signal(audio_signal, slice_duration_ms, n_video_slices, vid
 
 	return np.stack(slices)
 
+def reconstruct_spectrograms(enhanced_speech_spectrograms, mixed_spectrograms, clean_speech_spectrograms=None):
+	enhanced_speech_spectrogram = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
+	mixed_spectrogram = np.concatenate(list(mixed_spectrograms), axis=1)
 
-def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rate, peak):
+	nn_speech_spectrogram = None
+	if clean_speech_spectrograms is not None:
+		clean_speech_spectrogram = np.concatenate(list(clean_speech_spectrograms), axis=1)
+		nn_speech_spectrogram = nn_spectrogram(enhanced_speech_spectrogram, clean_speech_spectrogram, norm=1)
+
+	return enhanced_speech_spectrogram, mixed_spectrogram, nn_speech_spectrogram
+
+def reconstruct_speech_signal(mixed_signal, enhanced_speech_spectrogram, video_frame_rate, peak):
 	n_fft = int(float(mixed_signal.get_sample_rate()) / video_frame_rate)
 	hop_length = int(n_fft / 4)
 
 	mel_converter = MelConverter(mixed_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=80, freq_min_hz=0, freq_max_hz=8000)
 	_, original_phase = mel_converter.signal_to_mel_spectrogram(mixed_signal, get_phase=True)
 
-	speech_spectrogram = np.concatenate(list(speech_spectrograms), axis=1)
-
-	spectrogram_length = min(speech_spectrogram.shape[1], original_phase.shape[1])
-	speech_spectrogram = speech_spectrogram[:, :spectrogram_length]
+	spectrogram_length = min(enhanced_speech_spectrogram.shape[1], original_phase.shape[1])
+	enhanced_speech_spectrogram = enhanced_speech_spectrogram[:, :spectrogram_length]
 	original_phase = original_phase[:, :spectrogram_length]
 
-	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, original_phase, peak)
-
+	return mel_converter.reconstruct_signal_from_mel_spectrogram(enhanced_speech_spectrogram, original_phase, peak)
 
 def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate):
 	print("preprocessing pair: %s, %s" % (speech_file_path, noise_file_path))
@@ -94,8 +101,6 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	speech_spectrograms = preprocess_audio_signal(speech_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate)
 	mixed_spectrograms = preprocess_audio_signal(mixed_signal, slice_duration_ms, n_video_slices, video_frame_rate)
-
-
 
 	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, original_mixed, peak
 
@@ -150,6 +155,23 @@ def preprocess_data(video_file_paths, speech_file_paths, noise_file_paths):
 		np.concatenate(speech_spectrograms),
 		np.concatenate(noise_spectrograms)
 	)
+
+
+def nn_spectrogram(enhanced, clean, norm=1):
+	a = np.array([1.0, 1.0])
+	while a.size < enhanced.shape[1]:
+		a = np.convolve(a, [1, 1])
+	a = a / a.sum()
+
+	enhanced_normalized = enhanced / np.sqrt(np.sum(enhanced**2)) * a # type: np.ndarray
+	clean_normalized = clean / np.sqrt(np.sum(clean**2)) * a
+	nn = np.zeros_like(enhanced)
+	for i in range(enhanced.shape[1]):
+		diff = np.linalg.norm(clean_normalized.T - enhanced_normalized[:, i], ord=norm, axis=1)
+		nn[:, i] = clean[:, np.argmin(diff)]
+		# print i, ' -> ', np.argmin(diff)
+
+	return nn
 
 
 class VideoNormalizer(object):

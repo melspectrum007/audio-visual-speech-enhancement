@@ -8,6 +8,7 @@ import numpy as np
 
 import data_processor
 from dataset import AudioVisualDataset, AudioDataset
+from mediaio.audio_io import AudioSignal
 from network import SpeechEnhancementNetwork
 from shutil import copy2
 from mediaio import ffmpeg
@@ -106,6 +107,14 @@ def predict(args):
 			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=10
 		)
 
+		val_path = args.dataset_dir.replace('test', 'validation')
+		_, clean_speech_paths, _ = list_data(val_path, [speaker_id], args.noise_dirs, max_files=3)
+		clean_speech_spectrograms = []
+		for path in clean_speech_paths:
+			clean_speech_spectrograms.append(np.concatenate(list(data_processor.preprocess_audio_signal(
+				AudioSignal.from_wav_file(path), slice_duration_ms=200, n_video_slices=15, video_frame_rate=25)), axis=1)
+			)
+
 		for video_file_path, speech_file_path, noise_file_path in zip(video_file_paths, speech_file_paths, noise_file_paths):
 			try:
 				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
@@ -120,14 +129,18 @@ def predict(args):
 				print("loss: %f" % loss)
 
 				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
-
-				predicted_speech_signal = data_processor.reconstruct_speech_signal(
-					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak
+				enhanced_speech_spectrogram, mixed_spectrogram, nn_speech_spectrogram = data_processor.reconstruct_spectrograms(
+					predicted_speech_spectrograms,
+					mixed_spectrograms,
+					speech_spectrograms
 				)
+
+				enhanced_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, enhanced_speech_spectrogram, video_frame_rate, peak)
+				nn_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, nn_speech_spectrogram, video_frame_rate, peak)
 
 				storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path, speech_file_path,
-					mixed_signal, predicted_speech_signal
+					mixed_signal, enhanced_speech_signal, nn_speech_signal, enhanced_speech_spectrogram, nn_speech_spectrogram, mixed_spectrogram
 				)
 
 			except Exception:
@@ -149,30 +162,41 @@ class PredictionStorage(object):
 		return speaker_dir
 
 	def save_prediction(self, speaker_id, video_file_path, noise_file_path, speech_file_path,
-						mixed_signal, predicted_speech_signal):
+						mixed_signal, predicted_speech_signal, nn_speech, enhanced_speech_spectrogram,
+						nn_speech_spectrogram, mixed_spectrogram):
 
 		speaker_dir = self.__create_speaker_dir(speaker_id)
 
 		speech_name = os.path.splitext(os.path.basename(video_file_path))[0]
 		noise_name = os.path.splitext(os.path.basename(noise_file_path))[0]
 
-		sample_prediction_dir = os.path.join(speaker_dir, speech_name + "_" + noise_name)
+		sample_prediction_dir = os.path.join(speaker_dir, speech_name + '_' + noise_name)
 		os.mkdir(sample_prediction_dir)
 
-		mixture_audio_path = os.path.join(sample_prediction_dir, "mixture.wav")
-		enhanced_speech_audio_path = os.path.join(sample_prediction_dir, "enhanced.wav")
-		source_speech_new_audio_path = os.path.join(sample_prediction_dir, "source.wav")
+		mixture_audio_path = os.path.join(sample_prediction_dir, 'mixture.wav')
+		enhanced_speech_audio_path = os.path.join(sample_prediction_dir, 'enhanced.wav')
+		nn_speech_audio_path = os.path.join(sample_prediction_dir, 'nn.wav')
+		source_speech_new_audio_path = os.path.join(sample_prediction_dir, 'source.wav')
+
 		copy2(speech_file_path, source_speech_new_audio_path)
-
-
 		mixed_signal.save_to_wav_file(mixture_audio_path)
 		predicted_speech_signal.save_to_wav_file(enhanced_speech_audio_path)
+		nn_speech.save_to_wav_file(nn_speech_audio_path)
 
-		video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
-		mixture_video_path = os.path.join(sample_prediction_dir, "mixture" + video_extension)
-		# enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
+		mixed_spec_path = os.path.join(sample_prediction_dir, 'mixture.npy')
+		enhanced_spec_path = os.path.join(sample_prediction_dir, 'enhanced.npy')
+		nn_spec_path = os.path.join(sample_prediction_dir, 'nn.npy')
 
-		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
+		np.save(mixed_spec_path, mixed_spectrogram)
+		np.save(enhanced_spec_path, enhanced_speech_spectrogram)
+		np.save(nn_spec_path, nn_speech_spectrogram)
+
+
+		# video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
+		# mixture_video_path = os.path.join(sample_prediction_dir, 'mixture' + video_extension)
+		# enhanced_speech_video_path = os.path.join(sample_prediction_dir, 'enhanced' + video_extension)
+
+		# ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
 		# ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
 
 		# os.unlink(mixture_audio_path)
