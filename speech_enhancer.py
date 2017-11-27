@@ -11,6 +11,7 @@ from dataset import AudioVisualDataset, AudioDataset
 from mediaio.audio_io import AudioSignal
 from network import SpeechEnhancementNetwork
 from shutil import copy2
+from dsp.spectrogram import MelConverter
 from mediaio import ffmpeg
 
 
@@ -109,9 +110,9 @@ def predict(args):
 
 		val_path = args.dataset_dir.replace('test', 'validation')
 		_, clean_speech_paths, _ = list_data(val_path, [speaker_id], args.noise_dirs, max_files=3)
-		clean_speech_spectrograms = []
+		clean_mel_spectrograms = []
 		for path in clean_speech_paths:
-			clean_speech_spectrograms.append(np.concatenate(list(data_processor.preprocess_audio_signal(
+			clean_mel_spectrograms.append(np.concatenate(list(data_processor.preprocess_audio_signal(
 				AudioSignal.from_wav_file(path), slice_duration_ms=200, n_video_slices=15, video_frame_rate=25)), axis=1)
 			)
 
@@ -119,28 +120,36 @@ def predict(args):
 			try:
 				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
 
-				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak, video_frame_rate = data_processor.preprocess_sample(
+				video_samples, mixed_mel_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak, video_frame_rate = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path
 				)
 
 				video_normalizer.normalize(video_samples)
 
-				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
+				loss = network.evaluate(mixed_mel_spectrograms, video_samples, speech_spectrograms)
 				print("loss: %f" % loss)
 
-				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
-				enhanced_speech_spectrogram, mixed_spectrogram, nn_speech_spectrogram = data_processor.reconstruct_spectrograms(
-					predicted_speech_spectrograms,
-					mixed_spectrograms,
-					speech_spectrograms
+				enhanced_mel_spectrograms = network.predict(mixed_mel_spectrograms, video_samples)
+				enhanced_mel_spectrogram = np.concatenate(list(enhanced_mel_spectrograms), axis=1)
+				mixed_mel_spectrogram = np.concatenate(list(mixed_mel_spectrograms), axis=1)
+				clean_mel_spectrogram = np.concatenate(list(clean_mel_spectrograms), axis=1)
+
+				n_fft = int(float(mixed_signal.get_sample_rate()) / video_frame_rate)
+				mel_converter = MelConverter(
+					mixed_signal.get_sample_rate(), n_fft=n_fft, hop_length=n_fft / 4, n_mel_freqs=80, freq_min_hz=0, freq_max_hz=8000
 				)
 
-				enhanced_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, enhanced_speech_spectrogram, video_frame_rate, peak)
-				nn_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, nn_speech_spectrogram, video_frame_rate, peak)
+				enhanced_spectrogram = mel_converter.reconstruct_spectrogram_from_mel(enhanced_mel_spectrogram)
+				clean_spectrogarm = mel_converter.reconstruct_spectrogram_from_mel(clean_mel_spectrogram)
+
+				nn_spectrogram = data_processor.nn_spectrogram(enhanced_spectrogram, clean_spectrogarm, norm=1)
+
+				enhanced_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, enhanced_spectrogram, video_frame_rate, peak, mel=False)
+				nn_speech_signal = data_processor.reconstruct_speech_signal(mixed_signal, nn_spectrogram, video_frame_rate, peak)
 
 				storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path, speech_file_path,
-					mixed_signal, enhanced_speech_signal, nn_speech_signal, enhanced_speech_spectrogram, nn_speech_spectrogram, mixed_spectrogram
+					mixed_signal, enhanced_speech_signal, nn_speech_signal, enhanced_spectrogram, nn_spectrogram, mixed_mel_spectrogram
 				)
 
 			except Exception:

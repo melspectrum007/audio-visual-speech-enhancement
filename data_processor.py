@@ -67,7 +67,7 @@ def reconstruct_spectrograms(enhanced_speech_spectrograms, mixed_spectrograms, c
 
 	return enhanced_speech_spectrogram, mixed_spectrogram, nn_speech_spectrogram
 
-def reconstruct_speech_signal(mixed_signal, enhanced_speech_spectrogram, video_frame_rate, peak):
+def reconstruct_speech_signal(mixed_signal, enhanced_speech_spectrogram, video_frame_rate, peak, mel=True):
 	n_fft = int(float(mixed_signal.get_sample_rate()) / video_frame_rate)
 	hop_length = int(n_fft / 4)
 
@@ -78,7 +78,7 @@ def reconstruct_speech_signal(mixed_signal, enhanced_speech_spectrogram, video_f
 	enhanced_speech_spectrogram = enhanced_speech_spectrogram[:, :spectrogram_length]
 	original_phase = original_phase[:, :spectrogram_length]
 
-	return mel_converter.reconstruct_signal_from_mel_spectrogram(enhanced_speech_spectrogram, original_phase, peak)
+	return mel_converter.reconstruct_signal_from_spectrogram(enhanced_speech_spectrogram, original_phase, peak, mel=mel)
 
 def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate):
 	print("preprocessing pair: %s, %s" % (speech_file_path, noise_file_path))
@@ -159,7 +159,7 @@ def preprocess_data(video_file_paths, speech_file_paths, noise_file_paths):
 
 def nn_spectrogram(enhanced, clean, norm=1):
 	a = np.array([1.0, 1.0])
-	while a.size < enhanced.shape[1]:
+	while a.size < enhanced.shape[0]:
 		a = np.convolve(a, [1, 1])
 	a = a / a.sum()
 
