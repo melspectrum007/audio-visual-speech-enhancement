@@ -9,7 +9,7 @@ from mediaio.video_io import VideoFileReader
 
 
 def preprocess_video_sample(video_file_path, slice_duration_ms, mouth_height=128, mouth_width=128):
-	print("preprocessing %s" % video_file_path)
+	print('preprocessing %s' % video_file_path)
 
 	face_detector = FaceDetector()
 
@@ -41,9 +41,9 @@ def preprocess_audio_signal(audio_signal, slice_duration_ms, n_video_slices, vid
 		audio_signal.truncate(signal_length)
 
 	n_fft = int(float(audio_signal.get_sample_rate()) / video_frame_rate)
-	hop_length = int(n_fft / 4)
+	hop_length = int(n_fft / 10)
 
-	mel_converter = MelConverter(audio_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=80, freq_min_hz=0, freq_max_hz=8000)
+	mel_converter = MelConverter(audio_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=128, freq_min_hz=0, freq_max_hz=8000)
 	mel_spectrogram = mel_converter.signal_to_mel_spectrogram(audio_signal)
 
 	spectrogram_samples_per_slice = int(samples_per_slice / hop_length)
@@ -70,11 +70,11 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rat
 	speech_spectrogram = speech_spectrogram[:, :spectrogram_length]
 	original_phase = original_phase[:, :spectrogram_length]
 
-	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, original_phase, peak)
+	return mel_converter.reconstruct_signal_from_spectrogram(speech_spectrogram, original_phase, peak, mel=True)
 
 
 def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate):
-	print("preprocessing pair: %s, %s" % (speech_file_path, noise_file_path))
+	print('preprocessing pair: %s, %s' % (speech_file_path, noise_file_path))
 
 	speech_signal = AudioSignal.from_wav_file(speech_file_path)
 	noise_signal = AudioSignal.from_wav_file(noise_file_path)
@@ -101,7 +101,7 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 
 
 def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_duration_ms=200):
-	print("preprocessing sample: %s, %s, %s..." % (video_file_path, speech_file_path, noise_file_path))
+	print('preprocessing sample: %s, %s, %s...' % (video_file_path, speech_file_path, noise_file_path))
 
 	video_samples, video_frame_rate = preprocess_video_sample(video_file_path, slice_duration_ms)
 	mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak = preprocess_audio_pair(
@@ -126,12 +126,12 @@ def try_preprocess_sample(sample):
 		return preprocess_sample(*sample)
 
 	except Exception as e:
-		print("failed to preprocess %s (%s)" % (sample, e))
+		print('failed to preprocess %s (%s)' % (sample, e))
 		return None
 
 
 def preprocess_data(video_file_paths, speech_file_paths, noise_file_paths):
-	print("preprocessing data...")
+	print('preprocessing data...')
 
 	samples = zip(video_file_paths, speech_file_paths, noise_file_paths)
 

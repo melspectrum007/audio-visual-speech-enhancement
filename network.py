@@ -3,7 +3,7 @@ import os
 from keras import optimizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling2D, Deconvolution2D
 from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
-from keras.layers.merge import concatenate
+from keras.layers.merge import concatenate, add
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
 
@@ -30,9 +30,10 @@ class SpeechEnhancementNetwork(object):
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
 
-		audio_output = decoder(encoder([audio_input, video_input]))
+		enhanced = decoder(encoder([audio_input, video_input]))
+		# enhanced = add([audio_input, smm])
 
-		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
+		model = Model(inputs=[audio_input, video_input], outputs=enhanced)
 
 		optimizer = optimizers.adam(lr=5e-4)
 		model.compile(loss='mean_squared_error', optimizer=optimizer)
@@ -88,11 +89,11 @@ class SpeechEnhancementNetwork(object):
 
 	@staticmethod
 	def __build_audio_encoder(audio_input):
-		x = Convolution2D(64, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
+		x = Convolution2D(64, kernel_size=(5, 5), strides=(1, 1), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(64, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
+		x = Convolution2D(64, kernel_size=(4, 4), strides=(1, 5), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -124,11 +125,11 @@ class SpeechEnhancementNetwork(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(64, kernel_size=(4, 4), strides=(1, 1), padding='same')(x)
+		x = Deconvolution2D(64, kernel_size=(4, 4), strides=(1, 5), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(64, kernel_size=(5, 5), strides=(2, 2), padding='same')(x)
+		x = Deconvolution2D(64, kernel_size=(5, 5), strides=(1, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -241,4 +242,4 @@ class ModelCache(object):
 		self.__cache_dir = cache_dir
 
 	def model_path(self):
-		return os.path.join(self.__cache_dir, "model.h5py")
+		return os.path.join(self.__cache_dir, 'model.h5py')

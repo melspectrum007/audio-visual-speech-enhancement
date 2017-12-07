@@ -40,13 +40,13 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 	all_noise_spectrograms = []
 
 	for preprocessed_blob_path in preprocessed_blob_paths:
-		print("loading preprocessed samples from %s" % preprocessed_blob_path)
+		print('loading preprocessed samples from %s' % preprocessed_blob_path)
 		
 		with np.load(preprocessed_blob_path) as data:
-			all_video_samples.append(data["video_samples"])
-			all_mixed_spectrograms.append(data["mixed_spectrograms"])
-			all_speech_spectrograms.append(data["speech_spectrograms"])
-			all_noise_spectrograms.append(data["noise_spectrograms"])
+			all_video_samples.append(data['video_samples'])
+			all_mixed_spectrograms.append(data['mixed_spectrograms'])
+			all_speech_spectrograms.append(data['speech_spectrograms'])
+			all_noise_spectrograms.append(data['noise_spectrograms'])
 
 	video_samples = np.concatenate(all_video_samples, axis=0)
 	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
@@ -103,12 +103,12 @@ def predict(args):
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=10
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=10, shuffle=False
 		)
 
 		for video_file_path, speech_file_path, noise_file_path in zip(video_file_paths, speech_file_paths, noise_file_paths):
 			try:
-				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
+				print('predicting (%s, %s)...' % (video_file_path, noise_file_path))
 
 				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak, video_frame_rate = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path
@@ -117,21 +117,26 @@ def predict(args):
 				video_normalizer.normalize(video_samples)
 
 				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
-				print("loss: %f" % loss)
+				print('loss: %f' % loss)
 
-				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
+				enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
+
+				enhanced_speech_spectrogram = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
+				mixed_spectrogram = np.concatenate(list(mixed_spectrograms), axis=1)
+				speech_spectrogram = np.concatenate(list(speech_spectrograms), axis=1)
+
 
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
-					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak
+					mixed_signal, enhanced_speech_spectrograms, video_frame_rate, peak
 				)
 
-				storage.save_prediction(
-					speaker_id, video_file_path, noise_file_path, speech_file_path,
-					mixed_signal, predicted_speech_signal
-				)
+				storage.create_speaker_dir(speaker_id)
+				storage.save_prediction(video_file_path, noise_file_path, speech_file_path, mixed_signal, predicted_speech_signal)
+				storage.save_spectrograms([mixed_spectrogram, enhanced_speech_spectrogram, speech_spectrogram],
+										  ['mixed', 'enhanced', 'clean'])
 
 			except Exception:
-				logging.exception("failed to predict %s. skipping" % video_file_path)
+				logging.exception('failed to predict %s. skipping' % video_file_path)
 
 
 class PredictionStorage(object):
@@ -139,29 +144,28 @@ class PredictionStorage(object):
 	def __init__(self, storage_dir):
 		self.__base_dir = os.path.join(storage_dir, '{:%Y-%m-%d_%H-%M-%S}'.format(datetime.now()))
 		os.mkdir(self.__base_dir)
+		self.__speaker_dir = None
 
-	def __create_speaker_dir(self, speaker_id):
+	def create_speaker_dir(self, speaker_id):
 		speaker_dir = os.path.join(self.__base_dir, speaker_id)
 
 		if not os.path.exists(speaker_dir):
 			os.mkdir(speaker_dir)
 
-		return speaker_dir
+		self.__speaker_dir =  speaker_dir
 
-	def save_prediction(self, speaker_id, video_file_path, noise_file_path, speech_file_path,
+	def save_prediction(self, video_file_path, noise_file_path, speech_file_path,
 						mixed_signal, predicted_speech_signal):
-
-		speaker_dir = self.__create_speaker_dir(speaker_id)
 
 		speech_name = os.path.splitext(os.path.basename(video_file_path))[0]
 		noise_name = os.path.splitext(os.path.basename(noise_file_path))[0]
 
-		sample_prediction_dir = os.path.join(speaker_dir, speech_name + "_" + noise_name)
+		sample_prediction_dir = os.path.join(self.__speaker_dir, speech_name + '_' + noise_name)
 		os.mkdir(sample_prediction_dir)
 
-		mixture_audio_path = os.path.join(sample_prediction_dir, "mixture.wav")
-		enhanced_speech_audio_path = os.path.join(sample_prediction_dir, "enhanced.wav")
-		source_speech_new_audio_path = os.path.join(sample_prediction_dir, "source.wav")
+		mixture_audio_path = os.path.join(sample_prediction_dir, 'mixture.wav')
+		enhanced_speech_audio_path = os.path.join(sample_prediction_dir, 'enhanced.wav')
+		source_speech_new_audio_path = os.path.join(sample_prediction_dir, 'source.wav')
 		copy2(speech_file_path, source_speech_new_audio_path)
 
 
@@ -169,14 +173,20 @@ class PredictionStorage(object):
 		predicted_speech_signal.save_to_wav_file(enhanced_speech_audio_path)
 
 		video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
-		mixture_video_path = os.path.join(sample_prediction_dir, "mixture" + video_extension)
-		# enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
+		mixture_video_path = os.path.join(sample_prediction_dir, 'mixture' + video_extension)
+		# enhanced_speech_video_path = os.path.join(sample_prediction_dir, 'enhanced' + video_extension)
 
 		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
 		# ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
 
 		# os.unlink(mixture_audio_path)
 		# os.unlink(enhanced_speech_audio_path)
+
+	def save_spectrograms(self, spectrograms, paths):
+		for i, spec in enumerate(spectrograms):
+			path = os.path.join(self.__speaker_dir, paths[i])
+			np.save(path, spec)
+
 
 
 
@@ -195,12 +205,12 @@ def list_speakers(args):
 	return speaker_ids
 
 
-def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None):
+def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True):
 	speech_dataset = AudioVisualDataset(dataset_dir)
-	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle=True)
+	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle=shuffle)
 
 	noise_dataset = AudioDataset(noise_dirs)
-	noise_file_paths = noise_dataset.subset(max_files, shuffle=True)
+	noise_file_paths = noise_dataset.subset(max_files, shuffle=shuffle)
 
 	n_files = min(speech_subset.size(), len(noise_file_paths))
 
@@ -211,35 +221,35 @@ def main():
 	parser = argparse.ArgumentParser(add_help=False)
 	action_parsers = parser.add_subparsers()
 
-	preprocess_parser = action_parsers.add_parser("preprocess")
-	preprocess_parser.add_argument("--dataset_dir", type=str, required=True)
-	preprocess_parser.add_argument("--noise_dirs", nargs="+", type=str, required=True)
-	preprocess_parser.add_argument("--preprocessed_blob_path", type=str, required=True)
-	preprocess_parser.add_argument("--speakers", nargs="+", type=str)
-	preprocess_parser.add_argument("--ignored_speakers", nargs="+", type=str)
+	preprocess_parser = action_parsers.add_parser('preprocess')
+	preprocess_parser.add_argument('--dataset_dir', type=str, required=True)
+	preprocess_parser.add_argument('--noise_dirs', nargs='+', type=str, required=True)
+	preprocess_parser.add_argument('--preprocessed_blob_path', type=str, required=True)
+	preprocess_parser.add_argument('--speakers', nargs='+', type=str)
+	preprocess_parser.add_argument('--ignored_speakers', nargs='+', type=str)
 	preprocess_parser.set_defaults(func=preprocess)
 
-	train_parser = action_parsers.add_parser("train")
-	train_parser.add_argument("--train_preprocessed_blob_paths", nargs="+", type=str, required=True)
-	train_parser.add_argument("--validation_preprocessed_blob_paths", nargs="+", type=str, required=True)
-	train_parser.add_argument("--normalization_cache", type=str, required=True)
-	train_parser.add_argument("--model_cache_dir", type=str, required=True)
-	train_parser.add_argument("--tensorboard_dir", type=str, required=True)
+	train_parser = action_parsers.add_parser('train')
+	train_parser.add_argument('--train_preprocessed_blob_paths', nargs='+', type=str, required=True)
+	train_parser.add_argument('--validation_preprocessed_blob_paths', nargs='+', type=str, required=True)
+	train_parser.add_argument('--normalization_cache', type=str, required=True)
+	train_parser.add_argument('--model_cache_dir', type=str, required=True)
+	train_parser.add_argument('--tensorboard_dir', type=str, required=True)
 	train_parser.set_defaults(func=train)
 
-	predict_parser = action_parsers.add_parser("predict")
-	predict_parser.add_argument("--dataset_dir", type=str, required=True)
-	predict_parser.add_argument("--noise_dirs", nargs="+", type=str, required=True)
-	predict_parser.add_argument("--model_cache_dir", type=str, required=True)
-	predict_parser.add_argument("--normalization_cache", type=str, required=True)
-	predict_parser.add_argument("--prediction_output_dir", type=str, required=True)
-	predict_parser.add_argument("--speakers", nargs="+", type=str)
-	predict_parser.add_argument("--ignored_speakers", nargs="+", type=str)
+	predict_parser = action_parsers.add_parser('predict')
+	predict_parser.add_argument('--dataset_dir', type=str, required=True)
+	predict_parser.add_argument('--noise_dirs', nargs='+', type=str, required=True)
+	predict_parser.add_argument('--model_cache_dir', type=str, required=True)
+	predict_parser.add_argument('--normalization_cache', type=str, required=True)
+	predict_parser.add_argument('--prediction_output_dir', type=str, required=True)
+	predict_parser.add_argument('--speakers', nargs='+', type=str)
+	predict_parser.add_argument('--ignored_speakers', nargs='+', type=str)
 	predict_parser.set_defaults(func=predict)
 
 	args = parser.parse_args()
 	args.func(args)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
 	main()
