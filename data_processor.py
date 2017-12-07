@@ -61,7 +61,7 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rat
 	n_fft = int(float(mixed_signal.get_sample_rate()) / video_frame_rate)
 	hop_length = int(n_fft / 4)
 
-	mel_converter = MelConverter(mixed_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=80, freq_min_hz=0, freq_max_hz=8000)
+	mel_converter = MelConverter(mixed_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=128, freq_min_hz=0, freq_max_hz=8000)
 	_, original_phase = mel_converter.signal_to_mel_spectrogram(mixed_signal, get_phase=True)
 
 	speech_spectrogram = np.concatenate(list(speech_spectrograms), axis=1)
