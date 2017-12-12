@@ -121,14 +121,20 @@ def predict(args):
 
 				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
 
+				speech_spec = np.concatenate(list(predicted_speech_spectrograms), axis=1)
+				mixed_spec = np.concatenate(list(mixed_spectrograms), axis=1)
+
+
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak
 				)
 
-				storage.save_prediction(
+				sample_dir = storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path, speech_file_path,
-					mixed_signal, predicted_speech_signal
+					mixed_signal, predicted_speech_signal, speech_spec
 				)
+
+				storage.save_spectrograms([speech_spec, mixed_spec], ['enhanced', 'mixed'], sample_dir)
 
 			except Exception:
 				logging.exception("failed to predict %s. skipping" % video_file_path)
@@ -149,7 +155,7 @@ class PredictionStorage(object):
 		return speaker_dir
 
 	def save_prediction(self, speaker_id, video_file_path, noise_file_path, speech_file_path,
-						mixed_signal, predicted_speech_signal):
+						mixed_signal, predicted_speech_signal, speech_spec):
 
 		speaker_dir = self.__create_speaker_dir(speaker_id)
 
@@ -177,6 +183,11 @@ class PredictionStorage(object):
 		# os.unlink(mixture_audio_path)
 		# os.unlink(enhanced_speech_audio_path)
 
+		return sample_prediction_dir
+
+	def save_spectrograms(self, spectrograms, names, dir_path):
+		for i, spec in enumerate(spectrograms):
+			np.save(os.path.join(dir_path, names[i]), spec)
 
 def list_speakers(args):
 	if args.speakers is None:
