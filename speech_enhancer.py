@@ -164,21 +164,18 @@ class PredictionStorage(object):
 		source_speech_new_audio_path = os.path.join(sample_prediction_dir, "source.wav")
 		copy2(speech_file_path, source_speech_new_audio_path)
 
-
 		mixed_signal.save_to_wav_file(mixture_audio_path)
 		predicted_speech_signal.save_to_wav_file(enhanced_speech_audio_path)
 
 		video_extension = os.path.splitext(os.path.basename(video_file_path))[1]
 		mixture_video_path = os.path.join(sample_prediction_dir, "mixture" + video_extension)
-		# enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
+		enhanced_speech_video_path = os.path.join(sample_prediction_dir, "enhanced" + video_extension)
 
 		ffmpeg.merge(video_file_path, mixture_audio_path, mixture_video_path)
-		# ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
+		ffmpeg.merge(video_file_path, enhanced_speech_audio_path, enhanced_speech_video_path)
 
 		# os.unlink(mixture_audio_path)
 		# os.unlink(enhanced_speech_audio_path)
-
-
 
 
 def list_speakers(args):
