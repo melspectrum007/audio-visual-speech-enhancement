@@ -1,12 +1,15 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import librosa as lb
 import sys
 import os
 
 
 def plot_spec(path, show=True):
 	spec = np.load(path)
+	if spec.min() >= 0:
+		spec = lb.amplitude_to_db(spec)
 	plt.figure()
 	plt.pcolormesh(spec)
 	plt.title(path.split('/')[-1][:-4])

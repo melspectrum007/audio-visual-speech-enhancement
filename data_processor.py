@@ -8,7 +8,7 @@ from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
 
 
-def preprocess_video_sample(video_file_path, slice_duration_ms, mouth_height=128, mouth_width=128):
+def preprocess_video_sample(video_file_path, input_slice_duration_ms, output_slice_duration_ms, mouth_height=128, mouth_width=128):
 	print('preprocessing %s' % video_file_path)
 
 	face_detector = FaceDetector()
@@ -20,7 +20,7 @@ def preprocess_video_sample(video_file_path, slice_duration_ms, mouth_height=128
 		for i in range(reader.get_frame_count()):
 			mouth_cropped_frames[:, :, i] = face_detector.crop_mouth(frames[i], bounding_box_shape=(mouth_width, mouth_height))
 
-		frames_per_slice = int((float(slice_duration_ms) / 1000) * reader.get_frame_rate())
+		frames_per_slice = int((float(input_slice_duration_ms) / 1000) * reader.get_frame_rate())
 		n_slices = int(float(reader.get_frame_count()) / frames_per_slice)
 
 		slices = [
@@ -31,8 +31,8 @@ def preprocess_video_sample(video_file_path, slice_duration_ms, mouth_height=128
 		return np.stack(slices), reader.get_frame_rate()
 
 
-def preprocess_audio_signal(audio_signal, slice_duration_ms, n_video_slices, video_frame_rate, mel=True):
-	samples_per_slice = int((float(slice_duration_ms) / 1000) * audio_signal.get_sample_rate())
+def preprocess_audio_signal(audio_signal, input_slice_duration_ms, output_slice_duration_ms, n_video_slices, video_frame_rate, mel=True):
+	samples_per_slice = int((float(input_slice_duration_ms) / 1000) * audio_signal.get_sample_rate())
 	signal_length = samples_per_slice * n_video_slices
 
 	if audio_signal.get_number_of_samples() < signal_length:
@@ -79,7 +79,7 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rat
 	return mel_converter.reconstruct_signal_from_spectrogram(speech_spectrogram, original_phase, peak, mel=False, db=db)
 
 
-def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate, mel=True):
+def preprocess_audio_pair(speech_file_path, noise_file_path, input_slice_duration_ms, output_slice_duration_ms, n_video_slices, video_frame_rate, mel=True):
 	print('preprocessing pair: %s, %s' % (speech_file_path, noise_file_path))
 
 	speech_signal = AudioSignal.from_wav_file(speech_file_path)
@@ -97,19 +97,19 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	peak = mixed_signal.peak_normalize()
 	speech_signal.peak_normalize(peak)
 
-	speech_spectrograms = preprocess_audio_signal(speech_signal, slice_duration_ms, n_video_slices, video_frame_rate, mel=mel)
-	noise_spectrograms = preprocess_audio_signal(noise_signal, slice_duration_ms, n_video_slices, video_frame_rate, mel=mel)
-	mixed_spectrograms = preprocess_audio_signal(mixed_signal, slice_duration_ms, n_video_slices, video_frame_rate, mel=mel)
+	speech_spectrograms = preprocess_audio_signal(speech_signal, input_slice_duration_ms, n_video_slices, video_frame_rate, mel=mel)
+	noise_spectrograms = preprocess_audio_signal(noise_signal, input_slice_duration_ms, n_video_slices, video_frame_rate, mel=mel)
+	mixed_spectrograms = preprocess_audio_signal(mixed_signal, input_slice_duration_ms, n_video_slices, video_frame_rate, mel=mel)
 
 	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, original_mixed, peak
 
 
-def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_duration_ms=200):
+def preprocess_sample(video_file_path, speech_file_path, noise_file_path, input_slice_duration_ms=1000, output_slice_duration_ms=200):
 	print('preprocessing sample: %s, %s, %s...' % (video_file_path, speech_file_path, noise_file_path))
 
-	video_samples, video_frame_rate = preprocess_video_sample(video_file_path, slice_duration_ms)
+	video_samples, video_frame_rate = preprocess_video_sample(video_file_path, input_slice_duration_ms, output_slice_duration_ms)
 	mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak = preprocess_audio_pair(
-		speech_file_path, noise_file_path, slice_duration_ms, video_samples.shape[0], video_frame_rate, mel=False
+		speech_file_path, noise_file_path, input_slice_duration_ms, video_samples.shape[0], video_frame_rate, mel=False
 	)
 
 	n_slices = min(video_samples.shape[0], mixed_spectrograms.shape[0])

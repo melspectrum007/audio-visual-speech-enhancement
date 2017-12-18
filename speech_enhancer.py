@@ -103,7 +103,7 @@ def predict(args):
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=10
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=10, shuffle=False
 		)
 
 		for video_file_path, speech_file_path, noise_file_path in zip(video_file_paths, speech_file_paths, noise_file_paths):
@@ -111,8 +111,7 @@ def predict(args):
 				print("predicting (%s, %s)..." % (video_file_path, noise_file_path))
 
 				video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak, video_frame_rate = data_processor.preprocess_sample(
-					video_file_path, speech_file_path, noise_file_path
-				)
+					video_file_path, speech_file_path, noise_file_path)
 
 				video_normalizer.normalize(video_samples)
 
@@ -120,10 +119,12 @@ def predict(args):
 				# print("loss: %f" % loss)
 
 				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
+				# for i in range(14):
+				# 	predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
 
 				speech_spec = np.concatenate(list(predicted_speech_spectrograms), axis=1)
 				mixed_spec = np.concatenate(list(mixed_spectrograms), axis=1)
-
+				clean_spec = np.concatenate(list(speech_spectrograms), axis=1)
 
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
 					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak, db=False
@@ -134,7 +135,7 @@ def predict(args):
 					mixed_signal, predicted_speech_signal, speech_spec
 				)
 
-				storage.save_spectrograms([speech_spec, mixed_spec], ['enhanced', 'mixed'], sample_dir)
+				storage.save_spectrograms([speech_spec, mixed_spec, clean_spec], ['enhanced', 'mixed', 'source'], sample_dir)
 
 			except Exception:
 				logging.exception("failed to predict %s. skipping" % video_file_path)
@@ -203,12 +204,12 @@ def list_speakers(args):
 	return speaker_ids
 
 
-def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None):
+def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True):
 	speech_dataset = AudioVisualDataset(dataset_dir)
-	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle=True)
+	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle=shuffle)
 
 	noise_dataset = AudioDataset(noise_dirs)
-	noise_file_paths = noise_dataset.subset(max_files, shuffle=True)
+	noise_file_paths = noise_dataset.subset(max_files, shuffle=shuffle)
 
 	n_files = min(speech_subset.size(), len(noise_file_paths))
 

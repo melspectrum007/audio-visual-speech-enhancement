@@ -183,10 +183,12 @@ class SpeechEnhancementNetwork(object):
 			  validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
 			  model_cache_dir, tensorboard_dir):
 
+		# train_mixed_spectrograms = SpeechEnhancementNetwork.batch_stretch_0_to_1(train_mixed_spectrograms)
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_speech_spectrograms = np.expand_dims(train_speech_spectrograms, -1)  # append channels axis
 		train_speech_spectrograms = lb.db_to_amplitude(train_speech_spectrograms)
 
+		# validation_mixed_spectrograms = SpeechEnhancementNetwork.batch_stretch_0_to_1(validation_mixed_spectrograms)
 		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
 		validation_speech_spectrograms = np.expand_dims(validation_speech_spectrograms, -1)  # append channels axis
 		validation_speech_spectrograms = lb.db_to_amplitude(validation_speech_spectrograms)
@@ -214,6 +216,7 @@ class SpeechEnhancementNetwork(object):
 		)
 
 	def predict(self, mixed_spectrograms, video_samples):
+		# mixed_spectrograms = SpeechEnhancementNetwork.batch_stretch_0_to_1(mixed_spectrograms)
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
 		speech_spectrograms = self.__model.predict([mixed_spectrograms, video_samples])
 
@@ -227,6 +230,11 @@ class SpeechEnhancementNetwork(object):
 
 		return loss
 
+	def save(self, model_cache_dir):
+		model_cache = ModelCache(model_cache_dir)
+
+		self.__model.save(model_cache.model_path())
+
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
@@ -234,11 +242,12 @@ class SpeechEnhancementNetwork(object):
 
 		return SpeechEnhancementNetwork(model)
 
-	def save(self, model_cache_dir):
-		model_cache = ModelCache(model_cache_dir)
-
-		self.__model.save(model_cache.model_path())
-
+	@staticmethod
+	def batch_stretch_0_to_1(batch):
+		orig_shape = batch.shape
+		batch = batch.reshape(orig_shape[0], -1)
+		stretched = ((batch.T - batch.min(axis=1)) / (batch.max(axis=1) - batch.min(axis=1))).T
+		return stretched.reshape(orig_shape)
 
 class ModelCache(object):
 
