@@ -116,8 +116,8 @@ def predict(args):
 
 				video_normalizer.normalize(video_samples)
 
-				loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
-				print("loss: %f" % loss)
+				# loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
+				# print("loss: %f" % loss)
 
 				predicted_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
 
@@ -126,7 +126,7 @@ def predict(args):
 
 
 				predicted_speech_signal = data_processor.reconstruct_speech_signal(
-					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak
+					mixed_signal, predicted_speech_spectrograms, video_frame_rate, peak, db=False
 				)
 
 				sample_dir = storage.save_prediction(

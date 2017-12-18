@@ -63,7 +63,7 @@ def preprocess_audio_signal(audio_signal, slice_duration_ms, n_video_slices, vid
 	return np.stack(slices)
 
 
-def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rate, peak):
+def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rate, peak, db=True):
 	n_fft = int(float(mixed_signal.get_sample_rate()) / video_frame_rate)
 	hop_length = int(n_fft / 4)
 
@@ -76,7 +76,7 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rat
 	speech_spectrogram = speech_spectrogram[:, :spectrogram_length]
 	original_phase = original_phase[:-1, :spectrogram_length]
 
-	return mel_converter.reconstruct_signal_from_spectrogram(speech_spectrogram, original_phase, peak, mel=False)
+	return mel_converter.reconstruct_signal_from_spectrogram(speech_spectrogram, original_phase, peak, mel=False, db=db)
 
 
 def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate, mel=True):

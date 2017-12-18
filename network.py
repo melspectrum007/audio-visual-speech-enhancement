@@ -2,13 +2,13 @@ import os
 
 from keras import optimizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling2D, Deconvolution2D
-from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
-from keras.layers.merge import concatenate, add
+from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, Activation, Lambda
+from keras.layers.merge import concatenate, add, Multiply
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
 
 import numpy as np
-
+import librosa as lb
 
 class SpeechEnhancementNetwork(object):
 
@@ -31,7 +31,9 @@ class SpeechEnhancementNetwork(object):
 		video_input = Input(shape=video_shape)
 
 		smm = decoder(encoder([audio_input, video_input]))
-		audio_output = add([audio_input, smm])
+		smm = Activation('sigmoid')(smm)
+		audio_spec = Lambda(lambda x: 10 ** (x / 20))(audio_input)
+		audio_output = Multiply()([smm, audio_spec])
 
 		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
 
@@ -183,9 +185,11 @@ class SpeechEnhancementNetwork(object):
 
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_speech_spectrograms = np.expand_dims(train_speech_spectrograms, -1)  # append channels axis
+		train_speech_spectrograms = lb.db_to_amplitude(train_speech_spectrograms)
 
 		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
 		validation_speech_spectrograms = np.expand_dims(validation_speech_spectrograms, -1)  # append channels axis
+		validation_speech_spectrograms = lb.db_to_amplitude(validation_speech_spectrograms)
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
