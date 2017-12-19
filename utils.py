@@ -139,7 +139,7 @@ def strip_audio(video_path):
 def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 	with VideoFileReader(video_file_paths[0]) as reader:
 		fps = reader.get_frame_rate()
-	sr = AudioSignal.from_wav_file(source_file_paths).get_sample_rate()
+	sr = AudioSignal.from_wav_file(source_file_paths[0]).get_sample_rate()
 	data_processor = DataProcessor(fps, sr)
 
 	samples = zip(video_file_paths, source_file_paths, noise_file_paths)
