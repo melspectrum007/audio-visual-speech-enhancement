@@ -1,6 +1,6 @@
 import numpy as np
 import librosa as lb
-import os, subprocess, multiprocess, traceback
+import os, subprocess, multiprocess, traceback, sys
 
 from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
@@ -46,7 +46,9 @@ class DataProcessor(object):
 		input_bins_per_slice = self.num_input_frames * BINS_PER_FRAME
 		output_bins_per_slice = self.num_output_frames * BINS_PER_FRAME
 
-		print input_bins_per_slice, output_bins_per_slice, self.n_slices
+		sys.stderr.write(input_bins_per_slice)
+		sys.stderr.write(output_bins_per_slice)
+		sys.stderr.write(self.n_slices)
 
 		pad = (input_bins_per_slice - output_bins_per_slice) / 2
 		val = -10 if self.db else 0
