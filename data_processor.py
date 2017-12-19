@@ -130,7 +130,7 @@ def try_preprocess_sample(sample):
 		return preprocess_sample(*sample)
 
 	except Exception as e:
-		print('failed to preprocess %s (%s)' % (sample, e))
+		print('failed to preprocess %s' % e)
 		return None
 
 
