@@ -1,7 +1,6 @@
 import numpy as np
 import librosa as lb
-import os
-import subprocess
+import os, subprocess, multiprocess
 
 from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
@@ -15,12 +14,9 @@ SAMPLE_RATE = 16000
 
 class DataProcessor(object):
 
-	def __init__(self, example_video_path, example_audio_path, num_input_frames=11, num_output_frames=5, mel=False, db=True):
-		with VideoFileReader(example_video_path) as reader:
-			self.video_fps = reader.get_frame_rate()
-			self.frame_count = reader.get_frame_count()
-
-		self.audio_sr = AudioSignal.from_wav_file(example_audio_path).get_sample_rate()
+	def __init__(self, video_fps, audio_sr, num_input_frames=11, num_output_frames=5, mel=False, db=True):
+		self.video_fps = video_fps
+		self.audio_sr = audio_sr
 		self.num_input_frames = num_input_frames
 		self.num_output_frames = num_output_frames
 		self.input_slice_duration = float(num_input_frames) / self.video_fps
@@ -29,32 +25,36 @@ class DataProcessor(object):
 		self.db = db
 		self.nfft_single_frame = self.audio_sr / self.video_fps
 		self.hop = int(self.nfft_single_frame / BINS_PER_FRAME)
-		self.n_slices = int(float(self.frame_count) / self.num_input_frames)
+		self.n_slices = None
 
-	def slice_video(self, video_path):
-		print('slicing %s' % video_path)
+	def preprocess_video(self, frames):
+		self.n_slices = frames.shape[0] / self.num_output_frames
+		frames = frames[:self.n_slices]
 
-		face_detector = FaceDetector()
-		with VideoFileReader(video_path) as reader:
-			frames = reader.read_all_frames(convert_to_gray_scale=True)
+		mouth_cropped_frames = crop_mouth(frames)
+		pad = (self.num_input_frames - self.num_output_frames) / 2
+		mouth_cropped_frames = np.pad(mouth_cropped_frames, ((0, 0), (0, 0), (pad, pad)), 'constant')
 
-			mouth_cropped_frames = np.zeros([MOUTH_HEIGHT, MOUTH_WIDTH, reader.get_frame_count()], dtype=np.float32)
-			for i in range(reader.get_frame_count()):
-				mouth_cropped_frames[:, :, i] = face_detector.crop_mouth(frames[i], bounding_box_shape=(MOUTH_WIDTH, MOUTH_HEIGHT))
-
-			pad = (self.num_input_frames - self.num_output_frames) / 2
-			mouth_cropped_frames = np.pad(mouth_cropped_frames, ((0, 0), (0, 0), (pad, pad)), 'constant')
-
-			slices = [
-				mouth_cropped_frames[:, :, (i * self.num_input_frames):((i + 1) * self.num_input_frames)]
-				for i in range(self.n_slices)
+		slices = [
+			mouth_cropped_frames[:,:, i*self.num_output_frames:i*self.num_output_frames + self.num_input_frames]
+			for i in range(self.n_slices)
 			]
 
 		return np.stack(slices)
 
-	def get_mag_phase(self, data):
+	def slice_input_spectrogram(self, spectrogram):
+		input_bins_per_slice = self.num_input_frames * BINS_PER_FRAME
+		output_bins_per_slice = self.num_output_frames * BINS_PER_FRAME
 
-		mag, phase = lb.magphase(lb.stft(data, self.nfft_single_frame, self.hop))
+		pad = (input_bins_per_slice - output_bins_per_slice) / 2
+		val = -10 if self.db else 0
+		spectrogram = np.pad(spectrogram, ((0, 0), (pad, pad)), 'constant', constant_values=val)
+
+		return slice_spectrogram(spectrogram, self.n_slices, input_bins_per_slice, output_bins_per_slice)
+
+	def get_mag_phase(self, audio_data):
+
+		mag, phase = lb.magphase(lb.stft(audio_data, self.nfft_single_frame, self.hop))
 
 		# if self.mel:
 		# 	mel = MelConverter(self.audio_sr, nfft_single_frame, hop, 80, 0, 8000)
@@ -65,49 +65,9 @@ class DataProcessor(object):
 
 		return mag, phase
 
-	def slice_input_spectrogram(self, spectrogram):
-		input_bins_per_slice = self.num_input_frames * BINS_PER_FRAME
-		output_bins_per_slice = self.num_output_frames * BINS_PER_FRAME
+	def preprocess_inputs(self, frames, mixed_signal):
+		video_samples = self.preprocess_video(frames)
 
-		pad = (input_bins_per_slice - output_bins_per_slice) / 2
-		val = -10 if self.db else 0
-		spectrogram = np.pad(spectrogram, ((0, 0), (pad, pad)), 'constant', constant_values=val)
-
-		return DataProcessor.slice_spectrogram(spectrogram, self.n_slices, input_bins_per_slice)
-
-	@staticmethod
-	def slice_spectrogram(spectrogram, n_slices, bins_per_slice):
-
-		slices = [
-			spectrogram[:, i * bins_per_slice : (i+1) * bins_per_slice] for i in range(n_slices)
-		]
-
-		return np.stack(slices)
-
-	@staticmethod
-	def mix_source_noise(source_path, noies_path):
-		source = AudioSignal.from_wav_file(source_path)
-		noise = AudioSignal.from_wav_file(noies_path)
-
-		noise.truncate(source.get_number_of_samples())
-		noise.amplify(source)
-
-		return AudioMixer([source, noise])
-
-	@staticmethod
-	def strip_audio(video_path):
-		audio_path = '/tmp/audio.wav'
-		subprocess.call(['ffmpeg', '-i', video_path, '-vn', '-acodec', 'copy', audio_path])
-
-		signal = AudioSignal(audio_path, SAMPLE_RATE)
-		os.remove(audio_path)
-
-		return signal
-
-	def preprocess_inputs(self, video_path, mixed_audio_path):
-		video_samples = self.slice_video(video_path)
-
-		mixed_signal = AudioSignal.from_wav_file(mixed_audio_path)
 		mixed_spectrogram = self.get_mag_phase(mixed_signal.get_data())
 		mixed_spectrograms = self.slice_input_spectrogram(mixed_spectrogram)
 
@@ -115,7 +75,82 @@ class DataProcessor(object):
 
 	def preprocess_label(self, source_path):
 		label_spectrogram = self.get_mag_phase(AudioSignal.from_wav_file(source_path).get_data())[0]
+		slice_size = self.num_output_frames * BINS_PER_FRAME
+		return slice_spectrogram(label_spectrogram, self.n_slices, slice_size, slice_size)
 
-		return DataProcessor.slice_spectrogram(label_spectrogram, self.n_slices, self.num_output_frames * BINS_PER_FRAME)
+	def preprocess_sample(self, video_file_path, source_file_path, noise_file_path):
+		frames = get_frames(video_file_path)
+		mixed_signal = mix_source_noise(source_file_path, noise_file_path)
+		video_samples, mixed_spectrograms = self.preprocess_inputs(frames, mixed_signal)
+		label_spectrograms = self.preprocess_label(source_file_path)
+
+		min_num = min(video_samples.shape[0], mixed_spectrograms.shape[0])
+
+		return video_samples[:min_num], mixed_spectrograms[:min_num], label_spectrograms[:min_num]
+
+	def try_preprocess_sample(self, sample):
+		print('preprocessing %s' % sample)
+		try:
+			return self.preprocess_sample(*sample)
+		except Exception as e:
+			print('failed to preprocess %s (%s)' % (sample, e))
+			return None
 
 
+def get_frames(video_path):
+	with VideoFileReader(video_path) as reader:
+		return reader.read_all_frames(convert_to_gray_scale=True)
+
+def crop_mouth(frames):
+	face_detector = FaceDetector()
+
+	mouth_cropped_frames = np.zeros([MOUTH_HEIGHT, MOUTH_WIDTH, frames.shape[0]], dtype=np.float32)
+	for i in range(frames.shape[0]):
+		mouth_cropped_frames[:, :, i] = face_detector.crop_mouth(frames[i], bounding_box_shape=(MOUTH_WIDTH,
+		                                                                                        MOUTH_HEIGHT))
+	return mouth_cropped_frames
+
+def slice_spectrogram(spectrogram, n_slices, bins_per_slice, hop_length):
+
+	slices = [
+		spectrogram[:, i * bins_per_slice : i * bins_per_slice + hop_length] for i in range(n_slices)
+		]
+
+	return np.stack(slices)
+
+def mix_source_noise(source_path, noies_path):
+	source = AudioSignal.from_wav_file(source_path)
+	noise = AudioSignal.from_wav_file(noies_path)
+
+	noise.truncate(source.get_number_of_samples())
+	noise.amplify(source)
+
+	return AudioMixer().mix([source, noise])
+
+def strip_audio(video_path):
+	audio_path = '/tmp/audio.wav'
+	subprocess.call(['ffmpeg', '-i', video_path, '-vn', '-acodec', 'copy', audio_path])
+
+	signal = AudioSignal(audio_path, SAMPLE_RATE)
+	os.remove(audio_path)
+
+	return signal
+
+def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
+	with VideoFileReader(video_file_paths[0]) as reader:
+		fps = reader.get_frame_rate()
+	sr = AudioSignal.from_wav_file(source_file_paths).get_sample_rate()
+	data_processor = DataProcessor(fps, sr)
+
+	samples = zip(video_file_paths, source_file_paths, noise_file_paths)
+	thread_pool = multiprocess.Pool(8)
+	preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
+	preprocessed = [p for p in preprocessed if p is not None]
+
+	video_samples, mixed_spectrograms, source_spectrogarms = zip(*preprocessed)
+
+	return (
+		np.concatenate(video_samples),
+		np.concatenate(mixed_spectrograms),
+		np.concatenate(source_spectrogarms)
+	)
