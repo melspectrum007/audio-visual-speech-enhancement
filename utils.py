@@ -23,7 +23,7 @@ class DataProcessor(object):
 		self.output_slice_duration = float(num_output_frames) / self.video_fps
 		self.mel = mel
 		self.db = db
-		self.nfft_single_frame = self.audio_sr / self.video_fps
+		self.nfft_single_frame = int(self.audio_sr / self.video_fps)
 		self.hop = int(self.nfft_single_frame / BINS_PER_FRAME)
 		self.n_slices = None
 
