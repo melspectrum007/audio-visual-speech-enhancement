@@ -79,6 +79,7 @@ class DataProcessor(object):
 		return slice_spectrogram(label_spectrogram, self.n_slices, slice_size, slice_size)
 
 	def preprocess_sample(self, video_file_path, source_file_path, noise_file_path):
+		print ('preprocessing %s, %s' % (source_file_path, noise_file_path))
 		frames = get_frames(video_file_path)
 		mixed_signal = mix_source_noise(source_file_path, noise_file_path)
 		video_samples, mixed_spectrograms = self.preprocess_inputs(frames, mixed_signal)
@@ -89,11 +90,10 @@ class DataProcessor(object):
 		return video_samples[:min_num], mixed_spectrograms[:min_num], label_spectrograms[:min_num]
 
 	def try_preprocess_sample(self, sample):
-		print('preprocessing %s' % sample)
 		try:
 			return self.preprocess_sample(*sample)
 		except Exception as e:
-			# print('failed to preprocess %s (%s)' % (sample, e))
+			print('failed to preprocess: %s' % e)
 			return None
 
 
