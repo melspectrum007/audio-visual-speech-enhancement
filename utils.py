@@ -29,7 +29,7 @@ class DataProcessor(object):
 
 	def preprocess_video(self, frames):
 		self.n_slices = frames.shape[0] / self.num_output_frames
-		frames = frames[:self.n_slices]
+		frames = frames[:self.n_slices * self.num_output_frames]
 
 		mouth_cropped_frames = crop_mouth(frames)
 		pad = (self.num_input_frames - self.num_output_frames) / 2
