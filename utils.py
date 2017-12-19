@@ -89,7 +89,7 @@ class DataProcessor(object):
 		return video_samples[:min_num], mixed_spectrograms[:min_num], label_spectrograms[:min_num]
 
 	def try_preprocess_sample(self, sample):
-		# print('preprocessing %s' % sample)
+		print('preprocessing %s' % sample)
 		try:
 			return self.preprocess_sample(*sample)
 		except Exception as e:
