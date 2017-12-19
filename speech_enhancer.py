@@ -1,16 +1,13 @@
-import argparse
-import os
-from datetime import datetime
-import logging
-import pickle
-
+import argparse, os, logging, pickle
 import numpy as np
-
+import utils
 import data_processor
+
 from dataset import AudioVisualDataset, AudioDataset
 from network import SpeechEnhancementNetwork
 from shutil import copy2
 from mediaio import ffmpeg
+from datetime import datetime
 
 
 def preprocess(args):
@@ -20,7 +17,7 @@ def preprocess(args):
 		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1500
 	)
 
-	video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms = data_processor.preprocess_data(
+	video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms = utils.preprocess_data(
 		video_file_paths, speech_file_paths, noise_file_paths
 	)
 
