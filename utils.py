@@ -68,7 +68,7 @@ class DataProcessor(object):
 	def preprocess_inputs(self, frames, mixed_signal):
 		video_samples = self.preprocess_video(frames)
 
-		mixed_spectrogram = self.get_mag_phase(mixed_signal.get_data())
+		mixed_spectrogram = self.get_mag_phase(mixed_signal.get_data())[0]
 		mixed_spectrograms = self.slice_input_spectrogram(mixed_spectrogram)
 
 		return video_samples, mixed_spectrograms
