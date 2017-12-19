@@ -54,7 +54,7 @@ class DataProcessor(object):
 		val = -10 if self.db else 0
 		spectrogram = np.pad(spectrogram, ((0, 0), (pad, pad)), 'constant', constant_values=val)
 
-		return slice_spectrogram(spectrogram, self.n_slices, input_bins_per_slice, output_bins_per_slice)
+		return slice_spectrogram(spectrogram, input_bins_per_slice, output_bins_per_slice)
 
 	def get_mag_phase(self, audio_data):
 
@@ -80,7 +80,7 @@ class DataProcessor(object):
 	def preprocess_label(self, source_path):
 		label_spectrogram = self.get_mag_phase(AudioSignal.from_wav_file(source_path).get_data())[0]
 		slice_size = self.num_output_frames * BINS_PER_FRAME
-		return slice_spectrogram(label_spectrogram, self.n_slices, slice_size, slice_size)
+		return slice_spectrogram(label_spectrogram, slice_size, slice_size)
 
 	def preprocess_sample(self, video_file_path, source_file_path, noise_file_path):
 		print ('preprocessing %s, %s' % (source_file_path, noise_file_path))
@@ -115,7 +115,9 @@ def crop_mouth(frames):
 		                                                                                        MOUTH_HEIGHT))
 	return mouth_cropped_frames
 
-def slice_spectrogram(spectrogram, n_slices, bins_per_slice, hop_length):
+def slice_spectrogram(spectrogram, bins_per_slice, hop_length):
+
+	n_slices = (spectrogram.shape[1] - bins_per_slice) / hop_length + 1
 
 	slices = [
 		spectrogram[:, i * bins_per_slice : i * bins_per_slice + hop_length] for i in range(n_slices)
