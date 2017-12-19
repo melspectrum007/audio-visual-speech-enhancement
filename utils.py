@@ -1,6 +1,6 @@
 import numpy as np
 import librosa as lb
-import os, subprocess, multiprocess
+import os, subprocess, multiprocess, traceback
 
 from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
@@ -94,6 +94,7 @@ class DataProcessor(object):
 			return self.preprocess_sample(*sample)
 		except Exception as e:
 			print('failed to preprocess: %s' % e)
+			traceback.print_exc()
 			return None
 
 
