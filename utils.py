@@ -119,6 +119,8 @@ def slice_spectrogram(spectrogram, bins_per_slice, hop_length):
 
 	n_slices = (spectrogram.shape[1] - bins_per_slice) / hop_length + 1
 
+	sys.stderr.write(str(n_slices))
+
 	slices = [
 		spectrogram[:, i * bins_per_slice : i * bins_per_slice + hop_length] for i in range(n_slices)
 		]
