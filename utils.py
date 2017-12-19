@@ -46,6 +46,8 @@ class DataProcessor(object):
 		input_bins_per_slice = self.num_input_frames * BINS_PER_FRAME
 		output_bins_per_slice = self.num_output_frames * BINS_PER_FRAME
 
+		print input_bins_per_slice, output_bins_per_slice, self.n_slices
+
 		pad = (input_bins_per_slice - output_bins_per_slice) / 2
 		val = -10 if self.db else 0
 		spectrogram = np.pad(spectrogram, ((0, 0), (pad, pad)), 'constant', constant_values=val)
