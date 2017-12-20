@@ -91,23 +91,23 @@ class SpeechEnhancementNetwork(object):
 
 	@staticmethod
 	def __build_audio_encoder(audio_input):
-		x = Convolution2D(64, kernel_size=(5, 5), strides=(2, 2), padding='same')(audio_input)
+		x = Convolution2D(32, kernel_size=(5, 5), strides=(4, 2), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(64, kernel_size=(4, 4), strides=(2, 1), padding='same')(x)
+		x = Convolution2D(32, kernel_size=(5, 5), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(128, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Convolution2D(64, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(128, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+		x = Convolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(128, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+		x = Convolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -115,23 +115,23 @@ class SpeechEnhancementNetwork(object):
 
 	@staticmethod
 	def __build_audio_decoder(embedding):
-		x = Deconvolution2D(128, kernel_size=(2, 2), strides=(2, 1), padding='same')(embedding)
+		x = Deconvolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(embedding)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(128, kernel_size=(2, 2), strides=(2, 1), padding='same')(x)
+		x = Deconvolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(128, kernel_size=(4, 4), strides=(2, 2), padding='same')(x)
+		x = Deconvolution2D(64, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(64, kernel_size=(4, 4), strides=(2, 1), padding='same')(x)
+		x = Deconvolution2D(32, kernel_size=(5, 5), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(64, kernel_size=(5, 5), strides=(2, 2), padding='same')(x)
+		x = Deconvolution2D(32, kernel_size=(5, 5), strides=(4, 2), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 

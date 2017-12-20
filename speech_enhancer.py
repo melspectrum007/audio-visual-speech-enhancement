@@ -17,7 +17,7 @@ def preprocess(args):
 		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1500
 	)
 
-	video_samples, mixed_spectrograms, speech_spectrograms, noise_spectrograms = utils.preprocess_data(
+	video_samples, mixed_spectrograms, speech_spectrograms = utils.preprocess_data(
 		video_file_paths, speech_file_paths, noise_file_paths
 	)
 
@@ -26,7 +26,6 @@ def preprocess(args):
 		video_samples=video_samples,
 		mixed_spectrograms=mixed_spectrograms,
 		speech_spectrograms=speech_spectrograms,
-		noise_spectrograms=noise_spectrograms
 	)
 
 
@@ -34,7 +33,6 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 	all_video_samples = []
 	all_mixed_spectrograms = []
 	all_speech_spectrograms = []
-	all_noise_spectrograms = []
 
 	for preprocessed_blob_path in preprocessed_blob_paths:
 		print("loading preprocessed samples from %s" % preprocessed_blob_path)
@@ -43,33 +41,29 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 			all_video_samples.append(data["video_samples"])
 			all_mixed_spectrograms.append(data["mixed_spectrograms"])
 			all_speech_spectrograms.append(data["speech_spectrograms"])
-			all_noise_spectrograms.append(data["noise_spectrograms"])
 
 	video_samples = np.concatenate(all_video_samples, axis=0)
 	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
 	speech_spectrograms = np.concatenate(all_speech_spectrograms, axis=0)
-	noise_spectrograms = np.concatenate(all_noise_spectrograms, axis=0)
 
 	permutation = np.random.permutation(video_samples.shape[0])
 	video_samples = video_samples[permutation]
 	mixed_spectrograms = mixed_spectrograms[permutation]
 	speech_spectrograms = speech_spectrograms[permutation]
-	noise_spectrograms = noise_spectrograms[permutation]
 
 	return (
 		video_samples[:max_samples],
 		mixed_spectrograms[:max_samples],
 		speech_spectrograms[:max_samples],
-		noise_spectrograms[:max_samples]
 	)
 
 
 def train(args):
-	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms, _ = load_preprocessed_samples(
+	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms = load_preprocessed_samples(
 		args.train_preprocessed_blob_paths
 	)
 
-	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms, _ = load_preprocessed_samples(
+	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms = load_preprocessed_samples(
 		args.validation_preprocessed_blob_paths
 	)
 
