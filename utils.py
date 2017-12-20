@@ -98,9 +98,15 @@ class DataProcessor(object):
 			return self.preprocess_sample(*sample)
 		except Exception as e:
 			print('failed to preprocess: %s' % e)
-			traceback.print_exc()
+			# traceback.print_exc()
 			return None
 
+	def reconstruct_signal(self, spectrogram, mixed_signal):
+		phase = self.get_mag_phase(mixed_signal.get_data())[1]
+		if self.db:
+			spectrogram = lb.db_to_amplitude(spectrogram)
+		data = lb.istft(spectrogram * phase, self.hop)
+		return AudioSignal(data, mixed_signal.get_sample_rate())
 
 def get_frames(video_path):
 	with VideoFileReader(video_path) as reader:
@@ -119,10 +125,8 @@ def slice_spectrogram(spectrogram, bins_per_slice, hop_length):
 
 	n_slices = (spectrogram.shape[1] - bins_per_slice) / hop_length + 1
 
-	sys.stderr.write(str(n_slices))
-
 	slices = [
-		spectrogram[:, i * bins_per_slice : i * bins_per_slice + hop_length] for i in range(n_slices)
+		spectrogram[:, i * hop_length : i * hop_length + bins_per_slice] for i in range(n_slices)
 		]
 
 	return np.stack(slices)
@@ -131,8 +135,11 @@ def mix_source_noise(source_path, noies_path):
 	source = AudioSignal.from_wav_file(source_path)
 	noise = AudioSignal.from_wav_file(noies_path)
 
-	noise.truncate(source.get_number_of_samples())
-	noise.amplify(source)
+	if source.get_number_of_samples() < noise.get_number_of_samples():
+		noise.truncate(source.get_number_of_samples())
+	else:
+		source.truncate(noise.get_number_of_samples())
+	noise.amplify(source, 0)
 
 	return AudioMixer().mix([source, noise])
 
