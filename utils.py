@@ -26,6 +26,8 @@ class DataProcessor(object):
 		self.nfft_single_frame = int(self.audio_sr / self.video_fps)
 		self.hop = int(self.nfft_single_frame / BINS_PER_FRAME)
 		self.n_slices = None
+		self.mean = None
+		self.std = None
 
 	def preprocess_video(self, frames):
 		self.n_slices = frames.shape[0] / self.num_output_frames
@@ -73,8 +75,8 @@ class DataProcessor(object):
 
 		return video_samples, mixed_spectrograms
 
-	def preprocess_label(self, source_path):
-		label_spectrogram = self.get_mag_phase(AudioSignal.from_wav_file(source_path).get_data())[0]
+	def preprocess_label(self, source):
+		label_spectrogram = self.get_mag_phase(source.get_data())[0]
 		slice_size = self.num_output_frames * BINS_PER_FRAME
 		return slice_spectrogram(label_spectrogram, slice_size, slice_size)
 
@@ -82,8 +84,13 @@ class DataProcessor(object):
 		print ('preprocessing %s, %s' % (source_file_path, noise_file_path))
 		frames = get_frames(video_file_path)
 		mixed_signal = mix_source_noise(source_file_path, noise_file_path)
+		source_signal = AudioSignal.from_wav_file(source_file_path)
+
+		self.mean, self.std = mixed_signal.normalize()
+		source_signal.normalize(self.mean, self.std)
+
 		video_samples, mixed_spectrograms = self.preprocess_inputs(frames, mixed_signal)
-		label_spectrograms = self.preprocess_label(source_file_path)
+		label_spectrograms = self.preprocess_label(source_signal)
 
 		min_num = min(video_samples.shape[0], mixed_spectrograms.shape[0])
 
