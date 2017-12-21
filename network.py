@@ -25,14 +25,16 @@ class SpeechEnhancementNetwork(object):
 			extended_audio_spectrogram_shape, video_shape
 		)
 
-		decoder = cls.__build_decoder(shared_embedding_size, audio_embedding_shape)
+		decoder = cls.__build_decoder(shared_embedding_size, (5, 5, 64))
 
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
 
+		# audio_output = decoder(encoder([audio_input, video_input]))
 		smm = decoder(encoder([audio_input, video_input]))
 		smm = Activation('sigmoid')(smm)
 		audio_spec = Lambda(lambda x: 10 ** (x / 20))(audio_input)
+		audio_spec = Lambda(lambda x: x[:, :, 12:-12, :], output_shape=(320, 20, 1))(audio_spec)
 		audio_output = Multiply()([smm, audio_spec])
 
 		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
@@ -49,10 +51,12 @@ class SpeechEnhancementNetwork(object):
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
 
-		audio_embedding_matrix = cls.__build_audio_encoder(audio_input)
+		audio_encoder = cls.__build_audio_encoder(extended_audio_spectrogram_shape)
+		audio_embedding_matrix = audio_encoder(audio_input)
 		audio_embedding = Flatten()(audio_embedding_matrix)
 
-		video_embedding_matrix = cls.__build_video_encoder(video_input)
+		video_encoder = cls.__build_video_encoder(video_shape)
+		video_embedding_matrix = video_encoder(video_input)
 		video_embedding = Flatten()(video_embedding_matrix)
 
 		x = concatenate([audio_embedding, video_embedding])
@@ -85,12 +89,14 @@ class SpeechEnhancementNetwork(object):
 		audio_output = cls.__build_audio_decoder(audio_embedding)
 
 		model = Model(inputs=shared_embedding_input, outputs=audio_output)
+		print 'Decoder'
 		model.summary()
 
 		return model
 
 	@staticmethod
-	def __build_audio_encoder(audio_input):
+	def __build_audio_encoder(extended_audio_spectrogram_shape):
+		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		x = Convolution2D(32, kernel_size=(5, 5), strides=(4, 2), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
@@ -111,7 +117,11 @@ class SpeechEnhancementNetwork(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		return x
+		model = Model(inputs=[audio_input], outputs=[x])
+		print 'Audio Encoder'
+		model.summary()
+
+		return model
 
 	@staticmethod
 	def __build_audio_decoder(embedding):
@@ -140,7 +150,9 @@ class SpeechEnhancementNetwork(object):
 		return x
 
 	@staticmethod
-	def __build_video_encoder(video_input):
+	def __build_video_encoder(video_shape):
+		video_input = Input(shape=video_shape)
+
 		x = Convolution2D(128, kernel_size=(5, 5), padding='same')(video_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
@@ -177,21 +189,23 @@ class SpeechEnhancementNetwork(object):
 		x = MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		return x
+		model = Model(inputs=video_input, outputs=x)
+		print 'Video Encoder'
+		model.summary()
 
-	def train(self, train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
-			  validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
-			  model_cache_dir, tensorboard_dir):
+		return model
 
-		# train_mixed_spectrograms = SpeechEnhancementNetwork.batch_stretch_0_to_1(train_mixed_spectrograms)
+	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
+			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms,
+			  model_cache_dir, tensorboard_dir=None):
+
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
-		train_speech_spectrograms = np.expand_dims(train_speech_spectrograms, -1)  # append channels axis
-		train_speech_spectrograms = lb.db_to_amplitude(train_speech_spectrograms)
+		train_label_spectrograms = np.expand_dims(train_label_spectrograms, -1)  # append channels axis
+		train_label_spectrograms = lb.db_to_amplitude(train_label_spectrograms)
 
-		# validation_mixed_spectrograms = SpeechEnhancementNetwork.batch_stretch_0_to_1(validation_mixed_spectrograms)
 		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
-		validation_speech_spectrograms = np.expand_dims(validation_speech_spectrograms, -1)  # append channels axis
-		validation_speech_spectrograms = lb.db_to_amplitude(validation_speech_spectrograms)
+		validation_label_spectrograms = np.expand_dims(validation_label_spectrograms, -1)  # append channels axis
+		validation_label_spectrograms = lb.db_to_amplitude(validation_label_spectrograms)
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
@@ -199,19 +213,19 @@ class SpeechEnhancementNetwork(object):
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
 
-		tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
+		# tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
 		self.__model.fit(
 			x=[train_mixed_spectrograms, train_video_samples],
-			y=train_speech_spectrograms,
+			y=train_label_spectrograms,
 
 			validation_data=(
 				[validation_mixed_spectrograms, validation_video_samples],
-				validation_speech_spectrograms
+				validation_label_spectrograms
 			),
 
 			batch_size=16, epochs=1000,
-			callbacks=[checkpoint, lr_decay, early_stopping, tensorboard],
+			callbacks=[checkpoint, lr_decay, early_stopping],
 			verbose=1
 		)
 

@@ -39,9 +39,9 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 		print('loading preprocessed samples from %s' % preprocessed_blob_path)
 		
 		with np.load(preprocessed_blob_path) as data:
-			all_video_samples.append(data['video_samples'])
-			all_mixed_spectrograms.append(data['mixed_spectrograms'])
-			all_speech_spectrograms.append(data['speech_spectrograms'])
+			all_video_samples.append(data['video_samples'][:max_samples])
+			all_mixed_spectrograms.append(data['mixed_spectrograms'][:max_samples])
+			all_speech_spectrograms.append(data['speech_spectrograms'][:max_samples])
 
 	video_samples = np.concatenate(all_video_samples, axis=0)
 	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
@@ -53,20 +53,25 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 	speech_spectrograms = speech_spectrograms[permutation]
 
 	return (
-		video_samples[:max_samples],
-		mixed_spectrograms[:max_samples],
-		speech_spectrograms[:max_samples],
+		video_samples,
+		mixed_spectrograms,
+		speech_spectrograms,
 	)
 
 
 def train(args):
 	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms = load_preprocessed_samples(
-		args.train_preprocessed_blob_paths
+		args.train_preprocessed_blob_paths, max_samples=None
 	)
 
 	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms = load_preprocessed_samples(
-		args.validation_preprocessed_blob_paths
+		args.validation_preprocessed_blob_paths, max_samples=None
 	)
+
+	train_mixed_spectrograms = train_mixed_spectrograms[:, :-1, :]
+	train_speech_spectrograms = train_speech_spectrograms[:, :-1, :]
+	validation_mixed_spectrograms = validation_mixed_spectrograms[:, :-1, :]
+	validation_speech_spectrograms = validation_speech_spectrograms[:, :-1, :]
 
 	video_normalizer = dp.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
@@ -226,7 +231,7 @@ def main():
 	train_parser.add_argument('--validation_preprocessed_blob_paths', nargs='+', type=str, required=True)
 	train_parser.add_argument('--normalization_cache', type=str, required=True)
 	train_parser.add_argument('--model_cache_dir', type=str, required=True)
-	train_parser.add_argument('--tensorboard_dir', type=str, required=True)
+	train_parser.add_argument('--tensorboard_dir', type=str, required=False)
 	train_parser.set_defaults(func=train)
 
 	predict_parser = action_parsers.add_parser('predict')
