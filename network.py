@@ -30,12 +30,7 @@ class SpeechEnhancementNetwork(object):
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
 
-		# audio_output = decoder(encoder([audio_input, video_input]))
-		smm = decoder(encoder([audio_input, video_input]))
-		smm = Activation('sigmoid')(smm)
-		audio_spec = Lambda(lambda x: 10 ** (x / 20))(audio_input)
-		audio_spec = Lambda(lambda x: x[:, :, 12:-12, :], output_shape=(320, 20, 1))(audio_spec)
-		audio_output = Multiply()([smm, audio_spec])
+		audio_output = decoder(encoder([audio_input, video_input]))
 
 		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
 
@@ -201,11 +196,9 @@ class SpeechEnhancementNetwork(object):
 
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_label_spectrograms = np.expand_dims(train_label_spectrograms, -1)  # append channels axis
-		train_label_spectrograms = lb.db_to_amplitude(train_label_spectrograms)
 
 		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
 		validation_label_spectrograms = np.expand_dims(validation_label_spectrograms, -1)  # append channels axis
-		validation_label_spectrograms = lb.db_to_amplitude(validation_label_spectrograms)
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
