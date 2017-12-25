@@ -119,12 +119,14 @@ def predict(args):
 
 				# loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
 				# print('loss: %f' % loss)
-
+				mixed_spectrograms = mixed_spectrograms[:, :-1, :]
 				enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
 
 				enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
 				mixed_spec = np.concatenate(list(mixed_spectrograms), axis=1)
 				label_spec = np.concatenate(list(label_spectrograms), axis=1)
+
+				mixed_spec = np.r_[np.zeros([1, mixed_spec.shape[1]]), mixed_spec]
 
 				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_spec, mixed_signal)
 
