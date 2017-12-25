@@ -17,6 +17,7 @@ Implementation of the method described in the paper: [Visual Speech Enhancement 
 * opencv >= 3.2.0
 
 ### Getting started
+```
 Given an audio-visual dataset of the directory structure:
 ├── speaker-1
 |   ├── audio
@@ -33,7 +34,7 @@ Given an audio-visual dataset of the directory structure:
 |	├── v1.mp4
 |	└── v2.mp4
 ...
-
+```
 and noise directory contains audio files (*.wav) of noise samples, do the following steps.
 
 Preprocess both train and validation datasets by:
