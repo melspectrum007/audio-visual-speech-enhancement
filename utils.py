@@ -106,9 +106,13 @@ class DataProcessor(object):
 
 	def reconstruct_signal(self, spectrogram, mixed_signal):
 		phase = self.get_mag_phase(mixed_signal.get_data())[1]
+		phase = phase[:-1, :spectrogram.shape[1]]
 		if self.db:
 			spectrogram = lb.db_to_amplitude(spectrogram)
 		data = lb.istft(spectrogram * phase, self.hop)
+		data *= self.std
+		data += self.mean
+		data = data.astype('int16')
 		return AudioSignal(data, mixed_signal.get_sample_rate())
 
 def get_frames(video_path):

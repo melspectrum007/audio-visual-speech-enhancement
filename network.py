@@ -30,12 +30,12 @@ class SpeechEnhancementNetwork(object):
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
 
-		audio_output = decoder(encoder([audio_input, video_input]))
-		# smm = decoder(encoder([audio_input, video_input]))
-		# smm = Activation('sigmoid')(smm)
-		# audio_spec = Lambda(lambda x: 10 ** (x / 20))(audio_input)
-		# audio_spec = Lambda(lambda x: x[:, :, 12:-12, :], output_shape=(320, 20, 1))(audio_spec)
-		# audio_output = Multiply()([smm, audio_spec])
+		# audio_output = decoder(encoder([audio_input, video_input]))
+		smm = decoder(encoder([audio_input, video_input]))
+		smm = Activation('sigmoid')(smm)
+		audio_spec = Lambda(lambda x: 10 ** (x / 20))(audio_input)
+		audio_spec = Lambda(lambda x: x[:, :, 12:-12, :], output_shape=(320, 20, 1))(audio_spec)
+		audio_output = Multiply()([smm, audio_spec])
 
 		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
 

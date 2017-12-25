@@ -31,8 +31,10 @@ geese = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/geese.wav')
 # 	enhanced_sig.save_to_wav_file('/cs/grad/asaph/clean_sounds/out' + str(i+1) + '.wav')
 
 m, p = lb.magphase(lb.stft(s2.get_data(), 640, 160))
-m = m[:-1, :]
-p = p[:-1, :]
+# m = m[:-1, :]
+# p = p[:-1, :]
+
+p = np.roll(p, 300, axis=1)
 
 r = lb.istft(m*p, 160)
 a = AudioSignal(r, 16000)
