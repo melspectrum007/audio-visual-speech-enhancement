@@ -2,10 +2,10 @@ import multiprocess
 
 import numpy as np
 
-from dsp.spectrogram import MelConverter
 from facedetection.face_detection import FaceDetector
 from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
+from mediaio.dsp.spectrogram import MelConverter
 
 
 def preprocess_video_sample(video_file_path, slice_duration_ms, mouth_height=128, mouth_width=128):
