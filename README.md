@@ -17,22 +17,22 @@ Implementation of the method described in the paper: [Visual Speech Enhancement 
 * opencv >= 3.2.0
 
 ### Getting started
-```
 Given an audio-visual dataset of the directory structure:
+```
 ├── speaker-1
 |   ├── audio
-|   |   ├── a1.wav
-|   |   └── a2.wav
+|   |   ├── f1.wav
+|   |   └── f2.wav
 |   └── video
-|	├── v1.mp4
-|	└── v2.mp4
+|	├── f1.mp4
+|	└── f2.mp4
 ├── speaker-2
 |   ├── audio
-|   |   ├── a1.wav
-|   |   └── a2.wav
+|   |   ├── f1.wav
+|   |   └── f2.wav
 |   └── video
-|	├── v1.mp4
-|	└── v2.mp4
+|	├── f1.mp4
+|	└── f2.mp4
 ...
 ```
 and noise directory contains audio files (*.wav) of noise samples, do the following steps.
