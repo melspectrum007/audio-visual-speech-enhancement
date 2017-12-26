@@ -5,7 +5,7 @@ import os, subprocess, multiprocess, traceback, sys
 from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
 from facedetection.face_detection import FaceDetector
-from dsp.spectrogram import MelConverter
+
 
 MOUTH_WIDTH = 128
 MOUTH_HEIGHT = 128
@@ -14,7 +14,7 @@ SAMPLE_RATE = 16000
 
 class DataProcessor(object):
 
-	def __init__(self, video_fps, audio_sr, num_input_frames=11, num_output_frames=5, mel=False, db=True):
+	def __init__(self, video_fps, audio_sr, num_input_frames=5, num_output_frames=5, mel=False, db=True):
 		self.video_fps = video_fps
 		self.audio_sr = audio_sr
 		self.num_input_frames = num_input_frames
@@ -44,15 +44,15 @@ class DataProcessor(object):
 
 		return np.stack(slices)
 
-	def slice_input_spectrogram(self, spectrogram):
+	def slice_input_magphase(self, magphase):
 		input_bins_per_slice = self.num_input_frames * BINS_PER_FRAME
 		output_bins_per_slice = self.num_output_frames * BINS_PER_FRAME
 
 		pad = (input_bins_per_slice - output_bins_per_slice) / 2
 		val = -10 if self.db else 0
-		spectrogram = np.pad(spectrogram, ((0, 0), (pad, pad)), 'constant', constant_values=val)
+		magphase = np.pad(magphase, ((0, 0), (pad, pad), (0, 0)), 'constant', constant_values=val)
 
-		return slice_spectrogram(spectrogram, input_bins_per_slice, output_bins_per_slice)
+		return slice_magphase(magphase, input_bins_per_slice, output_bins_per_slice)
 
 	def get_mag_phase(self, audio_data):
 
@@ -65,20 +65,20 @@ class DataProcessor(object):
 		if self.db:
 			mag = lb.amplitude_to_db(mag)
 
-		return mag, phase
+		return np.stack((mag, np.angle(phase)), axis=-1)
 
 	def preprocess_inputs(self, frames, mixed_signal):
 		video_samples = self.preprocess_video(frames)
 
-		mixed_spectrogram = self.get_mag_phase(mixed_signal.get_data())[0]
-		mixed_spectrograms = self.slice_input_spectrogram(mixed_spectrogram)
+		mixed_magphase = self.get_mag_phase(mixed_signal.get_data())
+		mixed_magphases = self.slice_input_magphase(mixed_magphase)
 
-		return video_samples, mixed_spectrograms
+		return video_samples, mixed_magphases
 
 	def preprocess_label(self, source):
-		label_spectrogram = self.get_mag_phase(source.get_data())[0]
+		label_magphase = self.get_mag_phase(source.get_data())
 		slice_size = self.num_output_frames * BINS_PER_FRAME
-		return slice_spectrogram(label_spectrogram, slice_size, slice_size)
+		return slice_magphase(label_magphase, slice_size, slice_size)
 
 	def preprocess_sample(self, video_file_path, source_file_path, noise_file_path):
 		print ('preprocessing %s, %s' % (source_file_path, noise_file_path))
@@ -89,12 +89,12 @@ class DataProcessor(object):
 		self.mean, self.std = mixed_signal.normalize()
 		source_signal.normalize(self.mean, self.std)
 
-		video_samples, mixed_spectrograms = self.preprocess_inputs(frames, mixed_signal)
-		label_spectrograms = self.preprocess_label(source_signal)
+		video_samples, mixed_magphases = self.preprocess_inputs(frames, mixed_signal)
+		label_magphases = self.preprocess_label(source_signal)
 
-		min_num = min(video_samples.shape[0], mixed_spectrograms.shape[0])
+		min_num = min(video_samples.shape[0], mixed_magphases.shape[0])
 
-		return video_samples[:min_num], mixed_spectrograms[:min_num], label_spectrograms[:min_num]
+		return video_samples[:min_num], mixed_magphases[:min_num], label_magphases[:min_num]
 
 	def try_preprocess_sample(self, sample):
 		try:
@@ -104,12 +104,11 @@ class DataProcessor(object):
 			# traceback.print_exc()
 			return None
 
-	def reconstruct_signal(self, spectrogram, mixed_signal):
-		phase = self.get_mag_phase(mixed_signal.get_data())[1]
-		phase = phase[:-1, :spectrogram.shape[1]]
-		if self.db:
-			spectrogram = lb.db_to_amplitude(spectrogram)
-		data = lb.istft(spectrogram * phase, self.hop)
+	def reconstruct_signal(self, stft, mixed_signal):
+
+		# if self.db:
+		# 	mag = lb.db_to_amplitude(mag)
+		data = lb.istft(stft, self.hop)
 		data *= self.std
 		data += self.mean
 		data = data.astype('int16')
@@ -128,12 +127,12 @@ def crop_mouth(frames):
 		                                                                                        MOUTH_HEIGHT))
 	return mouth_cropped_frames
 
-def slice_spectrogram(spectrogram, bins_per_slice, hop_length):
+def slice_magphase(magphase, bins_per_slice, hop_length):
 
-	n_slices = (spectrogram.shape[1] - bins_per_slice) / hop_length + 1
+	n_slices = (magphase.shape[1] - bins_per_slice) / hop_length + 1
 
 	slices = [
-		spectrogram[:, i * hop_length : i * hop_length + bins_per_slice] for i in range(n_slices)
+		magphase[:, i * hop_length : i * hop_length + bins_per_slice, :] for i in range(n_slices)
 		]
 
 	return np.stack(slices)
@@ -170,10 +169,16 @@ def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 	preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
 	preprocessed = [p for p in preprocessed if p is not None]
 
-	video_samples, mixed_spectrograms, source_spectrogarms = zip(*preprocessed)
+	video_samples, mixed_magphases, source_magphases = zip(*preprocessed)
 
 	return (
 		np.concatenate(video_samples),
-		np.concatenate(mixed_spectrograms),
-		np.concatenate(source_spectrogarms)
+		np.concatenate(mixed_magphases),
+		np.concatenate(source_magphases)
 	)
+
+if __name__ == '__main__':
+	dp = DataProcessor(25, 16000)
+	s2 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/lgwm5n_s2.wav')
+	m = dp.get_mag_phase(s2.get_data())
+	print m.shape

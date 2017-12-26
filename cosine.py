@@ -1,7 +1,6 @@
 import numpy as np
 import librosa as lb
 import matplotlib.pyplot as plt
-from scipy.fftpack import dct
 
 from mediaio.audio_io import AudioSignal
 from dsp.spectrogram import MelConverter
@@ -19,7 +18,7 @@ log_spec = lb.amplitude_to_db(spec)
 # normalized_sqrt = (sqrt_spec - sqrt_spec.min()) / (sqrt_spec.max() - sqrt_spec.min())
 # dct_spec = dct(log_spec)
 # dct_spec = dct(spec)
-# plt.pcolormesh(log_spec)
+plt.pcolormesh(np.angle(phase))
 # plt.figure()
 # plt.pcolormesh(dct_spec)
 # index = 95
@@ -27,8 +26,8 @@ log_spec = lb.amplitude_to_db(spec)
 # plt.plot(log_spec[index,:])
 # print '12_norm: ', np.linalg.norm(dct_spec[1:13, index], ord=1), 'all_norm: ', np.linalg.norm(dct_spec[1:, index], ord=1)
 
-print np.mean(np.abs(10 ** (log_spec / 20) - spec))
-print np.mean(np.abs(lb.db_to_amplitude(log_spec) - spec))
+# print np.mean(np.abs(10 ** (log_spec / 20) - spec))
+# print np.mean(np.abs(lb.db_to_amplitude(log_spec) - spec))
 
 # plt.figure()
 # plt.pcolormesh(10 ** (log_spec / 10))
@@ -40,4 +39,4 @@ print np.mean(np.abs(lb.db_to_amplitude(log_spec) - spec))
 # # plt.pcolormesh(normalized_log)
 #
 #
-# plt.show()
+plt.show()

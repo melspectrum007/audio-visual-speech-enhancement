@@ -16,42 +16,11 @@ class SpeechEnhancementNetwork(object):
 		self.__model = model
 
 	@classmethod
-	def build(cls, audio_spectrogram_shape, video_shape):
-		# append channels axis
-		extended_audio_spectrogram_shape = list(audio_spectrogram_shape)
-		extended_audio_spectrogram_shape.append(1)
-
-		encoder, shared_embedding_size, audio_embedding_shape = cls.__build_encoder(
-			extended_audio_spectrogram_shape, video_shape
-		)
-
-		decoder = cls.__build_decoder(shared_embedding_size, (5, 5, 64))
-
-		audio_input = Input(shape=extended_audio_spectrogram_shape)
+	def __build_encoder(cls, audio_magphase_shape, video_shape):
+		audio_input = Input(shape=audio_magphase_shape)
 		video_input = Input(shape=video_shape)
 
-		# audio_output = decoder(encoder([audio_input, video_input]))
-		smm = decoder(encoder([audio_input, video_input]))
-		smm = Activation('sigmoid')(smm)
-		audio_spec = Lambda(lambda x: 10 ** (x / 20))(audio_input)
-		audio_spec = Lambda(lambda x: x[:, :, 12:-12, :], output_shape=(320, 20, 1))(audio_spec)
-		audio_output = Multiply()([smm, audio_spec])
-
-		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
-
-		optimizer = optimizers.adam(lr=5e-4)
-		model.compile(loss='mean_squared_error', optimizer=optimizer)
-
-		model.summary()
-
-		return SpeechEnhancementNetwork(model)
-
-	@classmethod
-	def __build_encoder(cls, extended_audio_spectrogram_shape, video_shape):
-		audio_input = Input(shape=extended_audio_spectrogram_shape)
-		video_input = Input(shape=video_shape)
-
-		audio_encoder = cls.__build_audio_encoder(extended_audio_spectrogram_shape)
+		audio_encoder = cls.__build_audio_encoder(audio_magphase_shape)
 		audio_embedding_matrix = audio_encoder(audio_input)
 		audio_embedding = Flatten()(audio_embedding_matrix)
 
@@ -95,8 +64,8 @@ class SpeechEnhancementNetwork(object):
 		return model
 
 	@staticmethod
-	def __build_audio_encoder(extended_audio_spectrogram_shape):
-		audio_input = Input(shape=extended_audio_spectrogram_shape)
+	def __build_audio_encoder(audio_magphase_shape):
+		audio_input = Input(shape=audio_magphase_shape)
 		x = Convolution2D(32, kernel_size=(5, 5), strides=(4, 2), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
@@ -195,17 +164,46 @@ class SpeechEnhancementNetwork(object):
 
 		return model
 
-	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
-			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms,
+	@classmethod
+	def build(cls, audio_magphase_shape, video_shape):
+
+		encoder, shared_embedding_size, audio_embedding_shape = cls.__build_encoder(
+			audio_magphase_shape, video_shape
+		)
+
+		decoder = cls.__build_decoder(shared_embedding_size, (5, 5, 64))
+
+		audio_input = Input(shape=audio_magphase_shape)
+		video_input = Input(shape=video_shape)
+
+		# audio_output = decoder(encoder([audio_input, video_input]))
+		mask = decoder(encoder([audio_input, video_input]))
+		mask = Activation('sigmoid')(mask)
+		mask = Reshape(audio_magphase_shape[:-1])(mask)
+
+		audio_spec = Lambda(lambda x: x[:, :, :, 0])(audio_input)
+		audio_spec = Lambda(lambda x: 10 ** (x / 20))(audio_spec)
+
+		audio_output = Multiply()([mask, audio_spec])
+
+		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
+
+		optimizer = optimizers.adam(lr=5e-4)
+		model.compile(loss='mean_squared_error', optimizer=optimizer)
+
+		model.summary()
+
+		return SpeechEnhancementNetwork(model)
+
+	def train(self, train_mixed_magphases, train_video_samples, train_label_magphases,
+			  validation_mixed_magphases, validation_video_samples, validation_label_magphases,
 			  model_cache_dir, tensorboard_dir=None):
 
-		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
-		train_label_spectrograms = np.expand_dims(train_label_spectrograms, -1)  # append channels axis
-		train_label_spectrograms = lb.db_to_amplitude(train_label_spectrograms)
+		train_labels = lb.db_to_amplitude(train_label_magphases[:,:,:,0])
+		validation_labels = lb.db_to_amplitude(validation_label_magphases[:,:,:,0])
 
-		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
-		validation_label_spectrograms = np.expand_dims(validation_label_spectrograms, -1)  # append channels axis
-		validation_label_spectrograms = lb.db_to_amplitude(validation_label_spectrograms)
+		train_labels *= np.cos(train_label_magphases[:,:,:,1] - train_mixed_magphases[:,:,:,1])
+		validation_labels *= np.cos(validation_label_magphases[:,:,:,1] - validation_mixed_magphases[:,:,:,1])
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
@@ -216,12 +214,12 @@ class SpeechEnhancementNetwork(object):
 		# tensorboard = TensorBoard(log_dir=tensorboard_dir, histogram_freq=0, write_graph=True, write_images=True)
 
 		self.__model.fit(
-			x=[train_mixed_spectrograms, train_video_samples],
-			y=train_label_spectrograms,
+			x=[train_mixed_magphases, train_video_samples],
+			y=train_labels,
 
 			validation_data=(
-				[validation_mixed_spectrograms, validation_video_samples],
-				validation_label_spectrograms
+				[validation_mixed_magphases, validation_video_samples],
+				validation_labels
 			),
 
 			batch_size=16, epochs=1000,
@@ -229,18 +227,16 @@ class SpeechEnhancementNetwork(object):
 			verbose=1
 		)
 
-	def predict(self, mixed_spectrograms, video_samples):
-		# mixed_spectrograms = SpeechEnhancementNetwork.batch_stretch_0_to_1(mixed_spectrograms)
-		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
-		speech_spectrograms = self.__model.predict([mixed_spectrograms, video_samples])
+	def predict(self, mixed_magphases, video_samples):
+		speech_magphases = self.__model.predict([mixed_magphases, video_samples])
 
-		return np.squeeze(speech_spectrograms)
+		return np.squeeze(speech_magphases)
 
-	def evaluate(self, mixed_spectrograms, video_samples, speech_spectrograms):
-		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
-		speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
+	def evaluate(self, mixed_magphases, video_samples, speech_magphases):
+		mixed_magphases = np.expand_dims(mixed_magphases, -1)  # append channels axis
+		speech_magphases = np.expand_dims(speech_magphases, -1)  # append channels axis
 		
-		loss = self.__model.evaluate(x=[mixed_spectrograms, video_samples], y=speech_spectrograms)
+		loss = self.__model.evaluate(x=[mixed_magphases, video_samples], y=speech_magphases)
 
 		return loss
 

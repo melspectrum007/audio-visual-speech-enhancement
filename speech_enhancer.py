@@ -19,60 +19,60 @@ def preprocess(args):
 		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1500
 	)
 
-	video_samples, mixed_spectrograms, speech_spectrograms = utils.preprocess_data(
+	video_samples, mixed_magphases, speech_magphases = utils.preprocess_data(
 		video_file_paths, speech_file_paths, noise_file_paths
 	)
 
 	np.savez(
 		args.preprocessed_blob_path,
 		video_samples=video_samples,
-		mixed_spectrograms=mixed_spectrograms,
-		speech_spectrograms=speech_spectrograms,
+		mixed_magphases=mixed_magphases,
+		speech_magphases=speech_magphases,
 	)
 
 
 def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 	all_video_samples = []
-	all_mixed_spectrograms = []
-	all_speech_spectrograms = []
+	all_mixed_magphases = []
+	all_speech_magphases = []
 
 	for preprocessed_blob_path in preprocessed_blob_paths:
 		print('loading preprocessed samples from %s' % preprocessed_blob_path)
 		
 		with np.load(preprocessed_blob_path) as data:
 			all_video_samples.append(data['video_samples'][:max_samples])
-			all_mixed_spectrograms.append(data['mixed_spectrograms'][:max_samples])
-			all_speech_spectrograms.append(data['speech_spectrograms'][:max_samples])
+			all_mixed_magphases.append(data['mixed_magphases'][:max_samples])
+			all_speech_magphases.append(data['speech_magphases'][:max_samples])
 
 	video_samples = np.concatenate(all_video_samples, axis=0)
-	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
-	speech_spectrograms = np.concatenate(all_speech_spectrograms, axis=0)
+	mixed_magphases = np.concatenate(all_mixed_magphases, axis=0)
+	speech_magphases = np.concatenate(all_speech_magphases, axis=0)
 
 	permutation = np.random.permutation(video_samples.shape[0])
 	video_samples = video_samples[permutation]
-	mixed_spectrograms = mixed_spectrograms[permutation]
-	speech_spectrograms = speech_spectrograms[permutation]
+	mixed_magphases = mixed_magphases[permutation]
+	speech_magphases = speech_magphases[permutation]
 
 	return (
 		video_samples,
-		mixed_spectrograms,
-		speech_spectrograms,
+		mixed_magphases,
+		speech_magphases,
 	)
 
 
 def train(args):
-	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms = load_preprocessed_samples(
+	train_video_samples, train_mixed_magphases, train_speech_magphases = load_preprocessed_samples(
 		args.train_preprocessed_blob_paths, max_samples=None
 	)
 
-	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms = load_preprocessed_samples(
+	validation_video_samples, validation_mixed_magphases, validation_speech_magphases = load_preprocessed_samples(
 		args.validation_preprocessed_blob_paths, max_samples=None
 	)
 
-	train_mixed_spectrograms = train_mixed_spectrograms[:, :-1, :]
-	train_speech_spectrograms = train_speech_spectrograms[:, :-1, :]
-	validation_mixed_spectrograms = validation_mixed_spectrograms[:, :-1, :]
-	validation_speech_spectrograms = validation_speech_spectrograms[:, :-1, :]
+	train_mixed_magphases = train_mixed_magphases[:, :-1, :, :]
+	train_speech_magphases = train_speech_magphases[:, :-1, :, :]
+	validation_mixed_magphases = validation_mixed_magphases[:, :-1, :, :]
+	validation_speech_magphases = validation_speech_magphases[:, :-1, :, :]
 
 	video_normalizer = dp.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
@@ -81,10 +81,10 @@ def train(args):
 	with open(args.normalization_cache, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
-	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
+	network = SpeechEnhancementNetwork.build(train_mixed_magphases.shape[1:], train_video_samples.shape[1:])
 	network.train(
-		train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
-		validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
+		train_mixed_magphases, train_video_samples, train_speech_magphases,
+		validation_mixed_magphases, validation_video_samples, validation_speech_magphases,
 		args.model_cache_dir, args.tensorboard_dir
 	)
 
@@ -113,31 +113,25 @@ def predict(args):
 			try:
 				print('predicting (%s, %s)...' % (video_file_path, noise_file_path))
 				mixed_signal = utils.mix_source_noise(speech_file_path, noise_file_path)
-				video_samples, mixed_spectrograms, label_spectrograms = data_processor.preprocess_sample(
+				video_samples, mixed_magphases, label_magphases = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path)
 
 				video_normalizer.normalize(video_samples)
 
-				# loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
-				# print('loss: %f' % loss)
-				mixed_spectrograms = mixed_spectrograms[:, :-1, :]
-				enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
+				mixed_magphases = mixed_magphases[:, :-1, :, :]
+				enhanced_stfts = network.predict(mixed_magphases, video_samples)
 
-				enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
-				mixed_spec = data_processor.get_mag_phase(mixed_signal.get_data())[0]
-				label_spec = np.concatenate(list(label_spectrograms), axis=1)
+				enhanced_stft = np.concatenate(list(enhanced_stfts), axis=1)
+				# label_spec = np.concatenate(list(label_magphases), axis=1)
 
-				# enhanced_spec = np.r_[np.zeros([1, enhanced_spec.shape[1]]), enhanced_spec]
-				enhanced_spec = lb.amplitude_to_db(enhanced_spec)
-
-				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_spec, mixed_signal)
+				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_stft, mixed_signal)
 
 				sample_dir = storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path, speech_file_path,
-					mixed_signal, predicted_speech_signal, enhanced_spec
+					mixed_signal, predicted_speech_signal
 				)
 
-				storage.save_spectrograms([enhanced_spec, mixed_spec, label_spec], ['enhanced', 'mixed', 'source'], sample_dir)
+				# storage.save_magphases([enhanced_stft, mixed_spec, label_spec], ['enhanced', 'mixed', 'source'], sample_dir)
 
 			except Exception:
 				logging.exception('failed to predict %s. skipping' % video_file_path)
@@ -158,7 +152,7 @@ class PredictionStorage(object):
 		return speaker_dir
 
 	def save_prediction(self, speaker_id, video_file_path, noise_file_path, speech_file_path,
-						mixed_signal, predicted_speech_signal, speech_spec):
+						mixed_signal, predicted_speech_signal):
 
 		speaker_dir = self.__create_speaker_dir(speaker_id)
 
@@ -188,8 +182,8 @@ class PredictionStorage(object):
 
 		return sample_prediction_dir
 
-	def save_spectrograms(self, spectrograms, names, dir_path):
-		for i, spec in enumerate(spectrograms):
+	def save_magphases(self, magphases, names, dir_path):
+		for i, spec in enumerate(magphases):
 			np.save(os.path.join(dir_path, names[i]), spec)
 
 def list_speakers(args):
