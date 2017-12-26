@@ -119,19 +119,24 @@ def predict(args):
 				video_normalizer.normalize(video_samples)
 
 				mixed_magphases = mixed_magphases[:, :-1, :, :]
-				enhanced_stfts = network.predict(mixed_magphases, video_samples)
+				label_magphases = label_magphases[:, :-1, :, :]
 
-				enhanced_stft = np.concatenate(list(enhanced_stfts), axis=1)
-				# label_spec = np.concatenate(list(label_magphases), axis=1)
+				enhanced_mag = network.predict(mixed_magphases, video_samples)
 
-				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_stft, mixed_signal)
+				enhanced_mag = np.concatenate(list(enhanced_mag), axis=1)
+				mixed_spec = np.concatenate(list(mixed_magphases[:,:,:,0]), axis=1)
+				label_spec = np.concatenate(list(label_magphases[:,:,:,0]), axis=1)
+
+				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_mag, mixed_signal)
 
 				sample_dir = storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path, speech_file_path,
 					mixed_signal, predicted_speech_signal
 				)
 
-				# storage.save_magphases([enhanced_stft, mixed_spec, label_spec], ['enhanced', 'mixed', 'source'], sample_dir)
+				enhanced_mag = lb.amplitude_to_db(enhanced_mag)
+
+				storage.save_magphases([enhanced_mag, mixed_spec, label_spec], ['enhanced', 'mixed', 'source'], sample_dir)
 
 			except Exception:
 				logging.exception('failed to predict %s. skipping' % video_file_path)

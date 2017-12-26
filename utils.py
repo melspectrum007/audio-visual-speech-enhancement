@@ -104,11 +104,15 @@ class DataProcessor(object):
 			# traceback.print_exc()
 			return None
 
-	def reconstruct_signal(self, stft, mixed_signal):
+	def reconstruct_signal(self, mag, mixed_signal):
+
+		angle = self.get_mag_phase(mixed_signal.get_data())[:,:,1]
+		phase = np.exp(1j * angle)
+		phase = phase[:-1, :mag.shape[1]]
 
 		# if self.db:
 		# 	mag = lb.db_to_amplitude(mag)
-		data = lb.istft(stft, self.hop)
+		data = lb.istft(mag * phase, self.hop)
 		data *= self.std
 		data += self.mean
 		data = data.astype('int16')
