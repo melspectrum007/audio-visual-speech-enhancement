@@ -6,6 +6,7 @@ from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshap
 from keras.layers.merge import concatenate, add, Multiply
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
+import keras.backend as tf
 
 import numpy as np
 import librosa as lb
@@ -70,7 +71,7 @@ class SpeechEnhancementNetwork(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(32, kernel_size=(5, 5), strides=(2, 1), padding='same')(x)
+		x = Convolution2D(32, kernel_size=(5, 5), strides=(2, 5), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -179,9 +180,9 @@ class SpeechEnhancementNetwork(object):
 		# audio_output = decoder(encoder([audio_input, video_input]))
 		mask = decoder(encoder([audio_input, video_input]))
 		mask = Activation('sigmoid')(mask)
-		mask = Reshape(audio_magphase_shape[:-1])(mask)
+		mask = Lambda(lambda x: tf.squeeze(x, axis=-1), output_shape=(320, 20))(mask)
 
-		audio_spec = Lambda(lambda x: x[:, :, :, 0])(audio_input)
+		audio_spec = Lambda(lambda x: x[:, :, 40:-40, 0])(audio_input)
 		audio_spec = Lambda(lambda x: 10 ** (x / 20))(audio_spec)
 
 		audio_output = Multiply()([mask, audio_spec])
@@ -202,8 +203,8 @@ class SpeechEnhancementNetwork(object):
 		train_labels = lb.db_to_amplitude(train_label_magphases[:,:,:,0])
 		validation_labels = lb.db_to_amplitude(validation_label_magphases[:,:,:,0])
 
-		train_labels *= np.cos(train_label_magphases[:,:,:,1] - train_mixed_magphases[:,:,:,1])
-		validation_labels *= np.cos(validation_label_magphases[:,:,:,1] - validation_mixed_magphases[:,:,:,1])
+		train_labels *= np.cos(train_label_magphases[:,:,:,1] - train_mixed_magphases[:,:,40:-40,1])
+		validation_labels *= np.cos(validation_label_magphases[:,:,:,1] - validation_mixed_magphases[:,:,40:-40,1])
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)

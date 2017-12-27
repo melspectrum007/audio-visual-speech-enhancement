@@ -2,11 +2,13 @@ from mediaio.audio_io import AudioSignal, AudioMixer
 import numpy as np
 import librosa as lb
 
-s2 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/lgwm5n_s2.wav')
-s3 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/bgwh6n_s3.wav')
-s4 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/lwiy5p_s4.wav')
-s2b = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/pbai6a_s2.wav')
-geese = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/geese.wav')
+# s2 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/lgwm5n_s2.wav')
+s2 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/lgwm5n_s2/source.wav')
+enh = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/lgwm5n_s2/enhanced.wav')
+# s3 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/bgwh6n_s3.wav')
+# s4 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/lwiy5p_s4.wav')
+# s2b = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/pbai6a_s2.wav')
+# geese = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/geese.wav')
 
 # noises = [s3, s4, geese, s2b]
 # clean_spec = lb.magphase(lb.stft(s2.get_data(), 640, 160))[0]
@@ -30,13 +32,15 @@ geese = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/geese.wav')
 # 	enhanced_sig.set_sample_type('int16')
 # 	enhanced_sig.save_to_wav_file('/cs/grad/asaph/clean_sounds/out' + str(i+1) + '.wav')
 
-m, p = lb.magphase(lb.stft(s2.get_data(), 640, 160))
+m1, p1 = lb.magphase(lb.stft(s2.get_data(), 640, 160))
+m2, p2 = lb.magphase(lb.stft(enh.get_data(), 640, 160))
+
 # m = m[:-1, :]
 # p = p[:-1, :]
 
-p = np.roll(p, 300, axis=1)
+# p = np.roll(p, 300, axis=1)
 
-r = lb.istft(m*p, 160)
+r = lb.istft(m1*p2, 160)
 a = AudioSignal(r, 16000)
 a.set_sample_type(s2.get_sample_type())
 
