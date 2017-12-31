@@ -249,7 +249,7 @@ class SpeechEnhancementNetwork(object):
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
-		model = load_model(model_cache.model_path())
+		model = load_model(model_cache.model_path(), custom_objects={'tf':tf})
 
 		return SpeechEnhancementNetwork(model)
 

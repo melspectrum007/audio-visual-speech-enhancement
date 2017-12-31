@@ -124,7 +124,7 @@ def predict(args):
 				enhanced_mag = network.predict(mixed_magphases, video_samples)
 
 				enhanced_mag = np.concatenate(list(enhanced_mag), axis=1)
-				mixed_spec = np.concatenate(list(mixed_magphases[:,:,:,0]), axis=1)
+				mixed_spec = np.concatenate(list(mixed_magphases[:,:,40:-40,0]), axis=1)
 				label_spec = np.concatenate(list(label_magphases[:,:,:,0]), axis=1)
 
 				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_mag, mixed_signal)
