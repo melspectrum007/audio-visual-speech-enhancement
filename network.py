@@ -218,6 +218,7 @@ class SpeechEnhancementNetwork(object):
 		mask = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(mask)
 
 		audio_input_squeezed = Lambda(lambda x: tf.squeeze(x, axis=-1))(audio_input)
+		audio_input_squeezed = Lambda(lambda x: 10**(x/20))(audio_input_squeezed)
 		audio_output = Multiply()([mask, audio_input_squeezed])
 
 		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
@@ -232,13 +233,6 @@ class SpeechEnhancementNetwork(object):
 	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
 			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms,
 			  model_cache_dir, tensorboard_dir=None):
-
-		#repalce with preprocess!!!
-		# train_mixed_spectrograms = train_mixed_spectrograms[:, :-1, :]
-		# train_label_spectrograms = train_label_spectrograms[:, :-1, :]
-		# validation_mixed_spectrograms = validation_mixed_spectrograms[:, :-1, :]
-		# validation_label_spectrograms = validation_label_spectrograms[:, :-1, :]
-
 
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_video_samples = np.expand_dims(train_video_samples, -1)  # append channels axis
