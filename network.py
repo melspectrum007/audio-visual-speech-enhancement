@@ -73,51 +73,53 @@ class SpeechEnhancementNetwork(object):
 	def __build_video_encoder(video_shape):
 		video_input = Input(shape=video_shape)
 
-		x = Convolution3D(128, kernel_size=(5, 5, 1), padding='same')(video_input)
+		x = Convolution3D(32, kernel_size=(5, 5, 1), padding='same')(video_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Convolution3D(128, kernel_size=(5, 5, 1), padding='same')(x)
+		x = Convolution3D(32, kernel_size=(5, 5, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Convolution3D(256, kernel_size=(3, 3, 1), padding='same')(x)
+		x = Convolution3D(64, kernel_size=(3, 3, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Convolution3D(256, kernel_size=(3, 3, 1), padding='same')(x)
+		x = Convolution3D(64, kernel_size=(3, 3, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Convolution3D(512, kernel_size=(3, 3, 1), padding='same')(x)
+		x = Convolution3D(128, kernel_size=(3, 3, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Convolution3D(512, kernel_size=(3, 3, 1), padding='same')(x)
+		x = Convolution3D(128, kernel_size=(3, 3, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Convolution3D(512, kernel_size=(2, 2, 1), padding='valid')(x)
+		x = Convolution3D(128, kernel_size=(2, 2, 1), padding='valid')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
-
-		T = video_shape[2]
 
 		x = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 2, 4, 3)))(x)
-		x = Reshape((-1, T))(x)
+		x = Reshape((-1, video_shape[2]))(x)
+
+		x = Lambda(lambda a: tf.concatenate([tf.repeat(a[:,:,0], 4), tf.repeat(a[:,:,1], 4), tf.repeat(a[:,:,2], 4),
+											 tf.repeat(a[:,:,3], 4), tf.repeat(a[:,:,4], 4)], axis=1))(x)
+		x = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(x)
 
 		model = Model(inputs=video_input, outputs=x)
 		print 'Video Encoder'
@@ -204,7 +206,7 @@ class SpeechEnhancementNetwork(object):
 		)
 
 
-		decoder = cls.__build_attention((20, 832))
+		attention = cls.__build_attention((20, 448))
 
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
@@ -212,7 +214,7 @@ class SpeechEnhancementNetwork(object):
 		shared_embeding = encoder([audio_input, video_input])
 
 		shared_embeding = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(shared_embeding)
-		mask = decoder(shared_embeding)
+		mask = attention(shared_embeding)
 		mask = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(mask)
 
 		audio_input_squeezed = Lambda(lambda x: tf.squeeze(x, axis=-1))(audio_input)
@@ -230,6 +232,13 @@ class SpeechEnhancementNetwork(object):
 	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
 			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms,
 			  model_cache_dir, tensorboard_dir=None):
+
+		#repalce with preprocess!!!
+		# train_mixed_spectrograms = train_mixed_spectrograms[:, :-1, :]
+		# train_label_spectrograms = train_label_spectrograms[:, :-1, :]
+		# validation_mixed_spectrograms = validation_mixed_spectrograms[:, :-1, :]
+		# validation_label_spectrograms = validation_label_spectrograms[:, :-1, :]
+
 
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_video_samples = np.expand_dims(train_video_samples, -1)  # append channels axis
@@ -261,6 +270,7 @@ class SpeechEnhancementNetwork(object):
 
 	def predict(self, mixed_spectrograms, video_samples):
 		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
+		video_samples = np.expand_dims(video_samples, -1)  # append channels axis
 		speech_spectrograms = self.__model.predict([mixed_spectrograms, video_samples])
 
 		return np.squeeze(speech_spectrograms)
@@ -301,4 +311,4 @@ class ModelCache(object):
 		return os.path.join(self.__cache_dir, "model.h5py")
 
 if __name__ == '__main__':
-	net = SpeechEnhancementNetwork.build((320, 20), (128, 128, 20))
+	net = SpeechEnhancementNetwork.build((320, 20), (128, 128, 5))
