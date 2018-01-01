@@ -58,9 +58,9 @@ class DataProcessor(object):
 
 		mag, phase = lb.magphase(lb.stft(audio_data, self.nfft_single_frame, self.hop))
 
-		# if self.mel:
-		# 	mel = MelConverter(self.audio_sr, nfft_single_frame, hop, 80, 0, 8000)
-		# 	mag = np.dot(mel._MEL_FILTER, mag)
+		if self.mel:
+			mel = MelConverter(self.audio_sr, self.nfft_single_frame, self.hop, 80, 0, 8000)
+			mag = np.dot(mel._MEL_FILTER, mag)
 
 		if self.db:
 			mag = lb.amplitude_to_db(mag)

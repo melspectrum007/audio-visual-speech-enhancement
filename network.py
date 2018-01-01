@@ -214,11 +214,8 @@ class SpeechEnhancementNetwork(object):
 		shared_embeding = encoder([audio_input, video_input])
 
 		shared_embeding = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(shared_embeding)
-		mask = attention(shared_embeding)
-		mask = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(mask)
-
-		audio_input_squeezed = Lambda(lambda x: tf.squeeze(x, axis=-1))(audio_input)
-		audio_output = Multiply()([mask, audio_input_squeezed])
+		audio_output = attention(shared_embeding)
+		audio_output = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(audio_output)
 
 		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
 
@@ -233,20 +230,11 @@ class SpeechEnhancementNetwork(object):
 			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms,
 			  model_cache_dir, tensorboard_dir=None):
 
-		#repalce with preprocess!!!
-		# train_mixed_spectrograms = train_mixed_spectrograms[:, :-1, :]
-		# train_label_spectrograms = train_label_spectrograms[:, :-1, :]
-		# validation_mixed_spectrograms = validation_mixed_spectrograms[:, :-1, :]
-		# validation_label_spectrograms = validation_label_spectrograms[:, :-1, :]
-
-
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_video_samples = np.expand_dims(train_video_samples, -1)  # append channels axis
-		train_label_spectrograms = lb.db_to_amplitude(train_label_spectrograms)
 
 		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
 		validation_video_samples = np.expand_dims(validation_video_samples, -1)  # append channels axis
-		validation_label_spectrograms = lb.db_to_amplitude(validation_label_spectrograms)
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
