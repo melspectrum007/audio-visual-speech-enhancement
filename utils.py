@@ -14,7 +14,7 @@ SAMPLE_RATE = 16000
 
 class DataProcessor(object):
 
-	def __init__(self, video_fps, audio_sr, num_input_frames=5, num_output_frames=5, mel=False, db=True):
+	def __init__(self, video_fps, audio_sr, num_input_frames=5, num_output_frames=5, mel=True, db=True):
 		self.video_fps = video_fps
 		self.audio_sr = audio_sr
 		self.num_input_frames = num_input_frames

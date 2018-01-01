@@ -38,7 +38,7 @@ class SpeechEnhancementNetwork(object):
 	@staticmethod
 	def __build_audio_encoder(extended_audio_spectrogram_shape):
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
-		x = Convolution2D(32, kernel_size=(5, 5), strides=(4, 1), padding='same')(audio_input)
+		x = Convolution2D(32, kernel_size=(5, 5), strides=(5, 1), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -54,7 +54,7 @@ class SpeechEnhancementNetwork(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
+		x = Convolution2D(128, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -181,9 +181,9 @@ class SpeechEnhancementNetwork(object):
 		shared_input = Input(shared_embeding_shape)
 
 		x = Bidirectional(LSTM(256, return_sequences=True))(shared_input)
-		x = Bidirectional(LSTM(256, return_sequences=True))(x)
+		x = Bidirectional(LSTM(128, return_sequences=True))(x)
 
-		mask = LSTM(320, activation='sigmoid', return_sequences=True)(x)
+		mask = LSTM(80, activation=None, return_sequences=True)(x)
 
 		model = Model(inputs=shared_input, outputs=mask)
 		print 'Attention'
@@ -206,7 +206,7 @@ class SpeechEnhancementNetwork(object):
 		)
 
 
-		attention = cls.__build_attention((20, 448))
+		attention = cls.__build_attention((20, 256))
 
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
@@ -299,4 +299,4 @@ class ModelCache(object):
 		return os.path.join(self.__cache_dir, "model.h5py")
 
 if __name__ == '__main__':
-	net = SpeechEnhancementNetwork.build((320, 20), (128, 128, 5))
+	net = SpeechEnhancementNetwork.build((80, 20), (128, 128, 5))
