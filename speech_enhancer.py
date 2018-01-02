@@ -119,7 +119,7 @@ def predict(args):
 				enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
 
 				enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
-				mixed_spec = data_processor.get_mag_phase(mixed_signal.get_data())[0]
+				mixed_spec = data_processor.get_stft(mixed_signal.get_data())[0]
 				label_spec = np.concatenate(list(label_spectrograms), axis=1)
 
 				enhanced_spec = lb.amplitude_to_db(enhanced_spec)

@@ -50,33 +50,36 @@ class DataProcessor(object):
 
 		pad = (input_bins_per_slice - output_bins_per_slice) / 2
 		val = -10 if self.db else 0
-		spectrogram = np.pad(spectrogram, ((0, 0), (pad, pad)), 'constant', constant_values=val)
+		spectrogram = np.pad(spectrogram, ((0, 0), (pad, pad), (0, 0)), 'constant', constant_values=val)
 
 		return slice_spectrogram(spectrogram, input_bins_per_slice, output_bins_per_slice)
 
-	def get_mag_phase(self, audio_data):
+	def get_stft(self, audio_data):
 
-		mag, phase = lb.magphase(lb.stft(audio_data, self.nfft_single_frame, self.hop))
+		stft = lb.stft(audio_data, self.nfft_single_frame, self.hop)
+		real = stft.real
+		imag = stft.imag
 
 		# if self.mel:
 		# 	mel = MelConverter(self.audio_sr, nfft_single_frame, hop, 80, 0, 8000)
 		# 	mag = np.dot(mel._MEL_FILTER, mag)
 
 		if self.db:
-			mag = lb.amplitude_to_db(mag)
+			real = lb.amplitude_to_db(real)
+			imag = lb.amplitude_to_db(imag)
 
-		return mag, phase
+		return np.stack((real, imag))
 
 	def preprocess_inputs(self, frames, mixed_signal):
 		video_samples = self.preprocess_video(frames)
 
-		mixed_spectrogram = self.get_mag_phase(mixed_signal.get_data())[0]
+		mixed_spectrogram = self.get_stft(mixed_signal.get_data())
 		mixed_spectrograms = self.slice_input_spectrogram(mixed_spectrogram)
 
 		return video_samples, mixed_spectrograms
 
 	def preprocess_label(self, source):
-		label_spectrogram = self.get_mag_phase(source.get_data())[0]
+		label_spectrogram = self.get_stft(source.get_data())
 		slice_size = self.num_output_frames * BINS_PER_FRAME
 		return slice_spectrogram(label_spectrogram, slice_size, slice_size)
 
@@ -101,11 +104,11 @@ class DataProcessor(object):
 			return self.preprocess_sample(*sample)
 		except Exception as e:
 			print('failed to preprocess: %s' % e)
-			# traceback.print_exc()
+			traceback.print_exc()
 			return None
 
 	def reconstruct_signal(self, spectrogram, mixed_signal):
-		phase = self.get_mag_phase(mixed_signal.get_data())[1]
+		phase = self.get_stft(mixed_signal.get_data())
 		phase = phase[:-1, :spectrogram.shape[1]]
 		if self.db:
 			spectrogram = lb.db_to_amplitude(spectrogram)
@@ -133,7 +136,7 @@ def slice_spectrogram(spectrogram, bins_per_slice, hop_length):
 	n_slices = (spectrogram.shape[1] - bins_per_slice) / hop_length + 1
 
 	slices = [
-		spectrogram[:, i * hop_length : i * hop_length + bins_per_slice] for i in range(n_slices)
+		spectrogram[:, i * hop_length : i * hop_length + bins_per_slice, :] for i in range(n_slices)
 		]
 
 	return np.stack(slices)
