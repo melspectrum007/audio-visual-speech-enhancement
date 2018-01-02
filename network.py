@@ -269,12 +269,12 @@ class SpeechEnhancementNetwork(object):
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
 
 		self.__model.fit(
-			x=[train_mixed_real, train_video_samples],
-			y=train_label_real,
+			x=[train_mixed_real, train_mixed_imag, train_video_samples],
+			y=[train_label_real, train_label_imag],
 
 			validation_data=(
-				[validation_mixed_real, validation_video_samples],
-				validation_label_real
+				[validation_mixed_real, validation_mixed_imag, validation_video_samples],
+				[validation_label_real, validation_label_imag]
 			),
 
 			batch_size=16, epochs=1000,
