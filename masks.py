@@ -1,6 +1,7 @@
 from mediaio.audio_io import AudioSignal, AudioMixer
 import numpy as np
 import librosa as lb
+import matplotlib.pyplot as plt
 
 s2 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/lgwm5n_s2.wav')
 s3 = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/bgwh6n_s3.wav')
@@ -30,14 +31,35 @@ geese = AudioSignal.from_wav_file('/cs/grad/asaph/clean_sounds/geese.wav')
 # 	enhanced_sig.set_sample_type('int16')
 # 	enhanced_sig.save_to_wav_file('/cs/grad/asaph/clean_sounds/out' + str(i+1) + '.wav')
 
-m, p = lb.magphase(lb.stft(s2.get_data(), 640, 160))
-# m = m[:-1, :]
-# p = p[:-1, :]
+# m, p = lb.magphase(lb.stft(s2.get_data(), 640, 160))
+# # m = m[:-1, :]
+# # p = p[:-1, :]
+#
+# p = np.roll(p, 300, axis=1)
+#
+# r = lb.istft(m*p, 160)
 
-p = np.roll(p, 300, axis=1)
+data = s2.get_data()
+data = data.astype('float64')
 
-r = lb.istft(m*p, 160)
-a = AudioSignal(r, 16000)
-a.set_sample_type(s2.get_sample_type())
+# plt.plot(data)
+# plt.show()
+prelog = lb.amplitude_to_db(lb.magphase(lb.stft(data, 640, 160))[0])
 
-a.save_to_wav_file('/cs/grad/asaph/testing/bbbbb.wav')
+mean = data.mean()
+std = data.std()
+
+data -= mean
+data /= std
+# plt.plot(data)
+# plt.show()
+postlog = lb.amplitude_to_db(lb.magphase(lb.stft(data, 640, 160))[0])
+
+constlog = lb.amplitude_to_db(lb.magphase(lb.stft(data * 32768, 640, 160))[0])
+
+plt.show()
+
+# a = AudioSignal(r, 16000)
+# a.set_sample_type(s2.get_sample_type())
+#
+# a.save_to_wav_file('/cs/grad/asaph/testing/bbbbb.wav')

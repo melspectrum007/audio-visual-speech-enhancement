@@ -2,7 +2,7 @@ import os
 
 from keras import optimizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling3D, Deconvolution2D, Convolution3D, LSTM, Bidirectional
-from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, Activation, Lambda
+from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, Activation, Lambda, Add
 from keras.layers.merge import concatenate, add, Multiply
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
@@ -127,63 +127,48 @@ class SpeechEnhancementNetwork(object):
 
 		return model
 
-	# @staticmethod
-	# def __build_audio_decoder(embedding):
-	# 	x = Deconvolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(embedding)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Deconvolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Deconvolution2D(64, kernel_size=(3, 3), strides=(2, 2), padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Deconvolution2D(32, kernel_size=(5, 5), strides=(2, 1), padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Deconvolution2D(32, kernel_size=(5, 5), strides=(4, 2), padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Deconvolution2D(1, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
-	#
-	# 	return x
-	#
-	# @classmethod
-	# def __build_decoder(cls, shared_embedding_size, audio_embedding_shape):
-	# 	shared_embedding_input = Input(shape=(shared_embedding_size,))
-	#
-	# 	x = Dense(shared_embedding_size)(shared_embedding_input)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	audio_embedding_size = np.prod(audio_embedding_shape)
-	#
-	# 	x = Dense(audio_embedding_size)(x)
-	# 	x = Reshape(audio_embedding_shape)(x)
-	# 	x = BatchNormalization()(x)
-	# 	audio_embedding = LeakyReLU()(x)
-	#
-	# 	audio_output = cls.__build_audio_decoder(audio_embedding)
-	#
-	# 	model = Model(inputs=shared_embedding_input, outputs=audio_output)
-	# 	print 'Decoder'
-	# 	model.summary()
-	#
-	# 	return model
+	@staticmethod
+	def __build_audio_decoder(spectogram_shape):
+		audio_spec = Input(spectogram_shape)
+
+		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(audio_spec)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(1, kernel_size=(1, 1), padding='same')(x)
+
+		x = Add()([audio_spec, x])
+
+		model = Model(inputs=audio_spec, outputs=x)
+		print 'Audio Decoder'
+		model.summary()
+
+		return model
 
 	@staticmethod
 	def __build_attention(shared_embeding_shape):
 		shared_input = Input(shared_embeding_shape)
 
-		x = Bidirectional(LSTM(256, return_sequences=True))(shared_input)
-		x = Bidirectional(LSTM(128, return_sequences=True))(x)
+		x = Bidirectional(LSTM(256, return_sequences=True, unroll=True))(shared_input)
+		x = Bidirectional(LSTM(128, return_sequences=True, unroll=True))(x)
 
-		mask = LSTM(80, activation=None, return_sequences=True)(x)
+		mask = LSTM(80, activation=None, return_sequences=True, unroll=True)(x)
 
 		model = Model(inputs=shared_input, outputs=mask)
 		print 'Attention'
@@ -207,6 +192,7 @@ class SpeechEnhancementNetwork(object):
 
 
 		attention = cls.__build_attention((20, 256))
+		decoder = cls.__build_audio_decoder((80, 20, 1))
 
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
@@ -216,6 +202,9 @@ class SpeechEnhancementNetwork(object):
 		shared_embeding = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(shared_embeding)
 		audio_output = attention(shared_embeding)
 		audio_output = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(audio_output)
+		audio_output = Lambda(lambda a: tf.expand_dims(a, axis=-1))(audio_output)
+		audio_output = decoder(audio_output)
+		audio_output = Lambda(lambda a: tf.squeeze(a, axis=-1))(audio_output)
 
 		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
 
