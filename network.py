@@ -18,18 +18,21 @@ class SpeechEnhancementNetwork(object):
 
 	@classmethod
 	def __build_encoder(cls, extended_audio_spectrogram_shape, video_shape):
-		audio_input = Input(shape=extended_audio_spectrogram_shape)
+		real_audio_input = Input(shape=extended_audio_spectrogram_shape)
+		imag_audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
 
 		audio_encoder = cls.__build_audio_encoder(extended_audio_spectrogram_shape)
-		audio_embedding = audio_encoder(audio_input)
+		real_audio_embedding = audio_encoder(real_audio_input)
+		imag_audio_embedding = audio_encoder(real_audio_input)
 
 		video_encoder = cls.__build_video_encoder(video_shape)
 		video_embedding = video_encoder(video_input)
 
-		shared_embeding = concatenate([audio_embedding, video_embedding], axis=1)
+		real_shared_embeding = concatenate([real_audio_embedding, video_embedding], axis=1)
+		imag_shared_embeding = concatenate([real_audio_embedding, video_embedding], axis=1)
 
-		model = Model(inputs=[audio_input, video_input], outputs=shared_embeding)
+		model = Model(inputs=[real_audio_input, imag_audio_input, video_input], outputs=[real_shared_embeding, imag_shared_embeding])
 		print 'Encoder'
 		model.summary()
 
@@ -128,7 +131,7 @@ class SpeechEnhancementNetwork(object):
 		return model
 
 	# @staticmethod
-	# def __build_audio_decoder(embedding):
+	# def __build_audio_decoder(embedding):real_shared_embeding
 	# 	x = Deconvolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(embedding)
 	# 	x = BatchNormalization()(x)
 	# 	x = LeakyReLU()(x)
@@ -146,7 +149,7 @@ class SpeechEnhancementNetwork(object):
 	# 	x = LeakyReLU()(x)
 	#
 	# 	x = Deconvolution2D(32, kernel_size=(5, 5), strides=(4, 2), padding='same')(x)
-	# 	x = BatchNormalization()(x)
+	# 	x = BatchNormalization()(x)real_shared_embeding
 	# 	x = LeakyReLU()(x)
 	#
 	# 	x = Deconvolution2D(1, kernel_size=(1, 1), strides=(1, 1), padding='same')(x)
@@ -208,20 +211,32 @@ class SpeechEnhancementNetwork(object):
 
 		attention = cls.__build_attention((20, 448))
 
-		audio_input = Input(shape=extended_audio_spectrogram_shape)
+		permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
+		squeeze = Lambda(lambda x: tf.squeeze(x, axis=-1))
+		db2amp = Lambda(lambda x: 10 ** (x / 20))
+		real_audio_input = Input(shape=extended_audio_spectrogram_shape)
+		imag_audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
 
-		shared_embeding = encoder([audio_input, video_input])
+		real_shared_embeding, imag_shared_embeding = encoder([real_audio_input, imag_audio_input, video_input])
 
-		shared_embeding = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(shared_embeding)
-		mask = attention(shared_embeding)
-		mask = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(mask)
 
-		audio_input_squeezed = Lambda(lambda x: tf.squeeze(x, axis=-1))(audio_input)
-		audio_input_squeezed = Lambda(lambda x: 10**(x/20))(audio_input_squeezed)
-		audio_output = Multiply()([mask, audio_input_squeezed])
+		real_shared_embeding = permute_axis(real_shared_embeding)
+		imag_shared_embeding = permute_axis(imag_shared_embeding)
+		real_mask = attention(real_shared_embeding)
+		imag_mask = attention(imag_shared_embeding)
+		real_mask = permute_axis(real_mask)
+		imag_mask = permute_axis(imag_mask)
 
-		model = Model(inputs=[audio_input, video_input], outputs=audio_output)
+		real_audio_input_squeezed = squeeze(real_audio_input)
+		imag_audio_input_squeezed = squeeze(imag_audio_input)
+		real_audio_input_squeezed = db2amp(real_audio_input_squeezed)
+		imag_audio_input_squeezed = db2amp(imag_audio_input_squeezed)
+
+		real_audio_output = Multiply()([real_mask, real_audio_input_squeezed])
+		imag_audio_output = Multiply()([imag_mask, imag_audio_input_squeezed])
+
+		model = Model(inputs=[real_audio_input, video_input], outputs=[real_audio_output, imag_audio_output])
 
 		optimizer = optimizers.adam(lr=5e-4)
 		model.compile(loss='mean_squared_error', optimizer=optimizer)
@@ -230,17 +245,22 @@ class SpeechEnhancementNetwork(object):
 
 		return SpeechEnhancementNetwork(model)
 
-	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
-			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms,
+	def train(self, train_mixed, train_video_samples, train_label,
+			  validation_mixed, validation_video_samples, validation_label,
 			  model_cache_dir, tensorboard_dir=None):
 
-		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_video_samples = np.expand_dims(train_video_samples, -1)  # append channels axis
-		train_label_spectrograms = lb.db_to_amplitude(train_label_spectrograms)
+		train_mixed_real = np.expand_dims(train_mixed[:,:,0], -1)  # append channels axis
+		train_mixed_imag = np.expand_dims(train_mixed[:,:,1], -1)  # append channels axis
+		train_label_real = lb.db_to_amplitude(train_label[:,:,0])
+		train_label_imag = lb.db_to_amplitude(train_label[:,:,1])
 
-		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
+
 		validation_video_samples = np.expand_dims(validation_video_samples, -1)  # append channels axis
-		validation_label_spectrograms = lb.db_to_amplitude(validation_label_spectrograms)
+		validation_mixed_real = np.expand_dims(validation_mixed[:,:,0], -1)  # append channels axis
+		validation_mixed_imag = np.expand_dims(validation_mixed[:,:,1], -1)  # append channels axis
+		validation_label_real = lb.db_to_amplitude(validation_label[:,:,0])
+		validation_label_imag = lb.db_to_amplitude(validation_label[:,:,1])
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
@@ -249,12 +269,12 @@ class SpeechEnhancementNetwork(object):
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
 
 		self.__model.fit(
-			x=[train_mixed_spectrograms, train_video_samples],
-			y=train_label_spectrograms,
+			x=[train_mixed_real, train_video_samples],
+			y=train_label_real,
 
 			validation_data=(
-				[validation_mixed_spectrograms, validation_video_samples],
-				validation_label_spectrograms
+				[validation_mixed_real, validation_video_samples],
+				validation_label_real
 			),
 
 			batch_size=16, epochs=1000,
