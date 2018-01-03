@@ -251,17 +251,17 @@ class SpeechEnhancementNetwork(object):
 			  model_cache_dir, tensorboard_dir=None):
 
 		train_video_samples = np.expand_dims(train_video_samples, -1)  # append channels axis
-		train_mixed_real = np.expand_dims(train_mixed[:,:,0], -1)  # append channels axis
-		train_mixed_imag = np.expand_dims(train_mixed[:,:,1], -1)  # append channels axis
-		train_label_real = lb.db_to_amplitude(train_label[:,:,0])
-		train_label_imag = lb.db_to_amplitude(train_label[:,:,1])
+		train_mixed_real = np.expand_dims(train_mixed[:,:,:,0], -1)  # append channels axis
+		train_mixed_imag = np.expand_dims(train_mixed[:,:,:,1], -1)  # append channels axis
+		train_label_real = lb.db_to_amplitude(train_label[:,:,:,0])
+		train_label_imag = lb.db_to_amplitude(train_label[:,:,:,1])
 
 
 		validation_video_samples = np.expand_dims(validation_video_samples, -1)  # append channels axis
-		validation_mixed_real = np.expand_dims(validation_mixed[:,:,0], -1)  # append channels axis
-		validation_mixed_imag = np.expand_dims(validation_mixed[:,:,1], -1)  # append channels axis
-		validation_label_real = lb.db_to_amplitude(validation_label[:,:,0])
-		validation_label_imag = lb.db_to_amplitude(validation_label[:,:,1])
+		validation_mixed_real = np.expand_dims(validation_mixed[:,:,:,0], -1)  # append channels axis
+		validation_mixed_imag = np.expand_dims(validation_mixed[:,:,:,1], -1)  # append channels axis
+		validation_label_real = lb.db_to_amplitude(validation_label[:,:,:,0])
+		validation_label_imag = lb.db_to_amplitude(validation_label[:,:,:,1])
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)

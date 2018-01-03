@@ -69,6 +69,11 @@ def train(args):
 		args.validation_preprocessed_blob_paths, max_samples=None
 	)
 
+	train_mixed_spectrograms = train_mixed_spectrograms[:,:-1,:,:]
+	train_speech_spectrograms = train_speech_spectrograms[:,:-1,:,:]
+	validation_mixed_spectrograms = validation_mixed_spectrograms[:,:-1,:,:]
+	validation_speech_spectrograms = validation_speech_spectrograms[:,:-1,:,:]
+
 	video_normalizer = dp.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(validation_video_samples)
