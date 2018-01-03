@@ -106,6 +106,9 @@ class DataProcessor(object):
 
 	def reconstruct_signal(self, spectrogram, mixed_signal):
 		phase = self.get_mag_phase(mixed_signal.get_data())[1]
+		if self.mel:
+			mel = MelConverter(self.audio_sr, self.nfft_single_frame, self.hop, 80, 0, 8000)
+			spectrogram = np.dot(np.linalg.pinv(mel._MEL_FILTER), spectrogram)
 		if self.db:
 			spectrogram = lb.db_to_amplitude(spectrogram)
 		data = lb.istft(spectrogram * phase, self.hop)
