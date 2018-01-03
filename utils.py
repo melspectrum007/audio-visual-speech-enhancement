@@ -106,7 +106,6 @@ class DataProcessor(object):
 
 	def reconstruct_signal(self, spectrogram, mixed_signal):
 		phase = self.get_mag_phase(mixed_signal.get_data())[1]
-		phase = phase[:-1, :spectrogram.shape[1]]
 		if self.db:
 			spectrogram = lb.db_to_amplitude(spectrogram)
 		data = lb.istft(spectrogram * phase, self.hop)
