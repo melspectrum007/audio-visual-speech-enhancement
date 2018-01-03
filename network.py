@@ -211,9 +211,10 @@ class SpeechEnhancementNetwork(object):
 
 		attention = cls.__build_attention((20, 448))
 
-		permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
-		squeeze = Lambda(lambda x: tf.squeeze(x, axis=-1))
-		db2amp = Lambda(lambda x: 10 ** (x / 20))
+		Permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
+		Squeeze = Lambda(lambda x: tf.squeeze(x, axis=-1))
+		Db2amp = Lambda(lambda x: 10 ** (x / 20))
+
 		real_audio_input = Input(shape=extended_audio_spectrogram_shape)
 		imag_audio_input = Input(shape=extended_audio_spectrogram_shape)
 		video_input = Input(shape=video_shape)
@@ -221,22 +222,22 @@ class SpeechEnhancementNetwork(object):
 		real_shared_embeding, imag_shared_embeding = encoder([real_audio_input, imag_audio_input, video_input])
 
 
-		real_shared_embeding = permute_axis(real_shared_embeding)
-		imag_shared_embeding = permute_axis(imag_shared_embeding)
+		real_shared_embeding = Permute_axis(real_shared_embeding)
+		imag_shared_embeding = Permute_axis(imag_shared_embeding)
 		real_mask = attention(real_shared_embeding)
 		imag_mask = attention(imag_shared_embeding)
-		real_mask = permute_axis(real_mask)
-		imag_mask = permute_axis(imag_mask)
+		real_mask = Permute_axis(real_mask)
+		imag_mask = Permute_axis(imag_mask)
 
-		real_audio_input_squeezed = squeeze(real_audio_input)
-		imag_audio_input_squeezed = squeeze(imag_audio_input)
-		real_audio_input_squeezed = db2amp(real_audio_input_squeezed)
-		imag_audio_input_squeezed = db2amp(imag_audio_input_squeezed)
+		real_audio_input_squeezed = Squeeze(real_audio_input)
+		imag_audio_input_squeezed = Squeeze(imag_audio_input)
+		real_audio_input_squeezed = Db2amp(real_audio_input_squeezed)
+		imag_audio_input_squeezed = Db2amp(imag_audio_input_squeezed)
 
 		real_audio_output = Multiply()([real_mask, real_audio_input_squeezed])
 		imag_audio_output = Multiply()([imag_mask, imag_audio_input_squeezed])
 
-		model = Model(inputs=[real_audio_input, video_input], outputs=[real_audio_output, imag_audio_output])
+		model = Model(inputs=[real_audio_input, imag_audio_input, video_input], outputs=[real_audio_output, imag_audio_output])
 
 		optimizer = optimizers.adam(lr=5e-4)
 		model.compile(loss='mean_squared_error', optimizer=optimizer)
