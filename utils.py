@@ -111,6 +111,11 @@ class DataProcessor(object):
 			spectrogram = np.dot(np.linalg.pinv(mel._MEL_FILTER), spectrogram)
 		if self.db:
 			spectrogram = lb.db_to_amplitude(spectrogram)
+
+		n_frames = min(spectrogram.shape[1], phase.shape[1])
+		spectrogram = spectrogram[:, :n_frames]
+		phase = phase[:, :n_frames]
+
 		data = lb.istft(spectrogram * phase, self.hop)
 		data *= self.std
 		data += self.mean
