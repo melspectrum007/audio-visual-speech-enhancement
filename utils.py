@@ -107,12 +107,8 @@ class DataProcessor(object):
 			traceback.print_exc()
 			return None
 
-	def reconstruct_signal(self, spectrogram, mixed_signal):
-		phase = self.get_stft(mixed_signal.get_data())
-		phase = phase[:-1, :spectrogram.shape[1]]
-		if self.db:
-			spectrogram = lb.db_to_amplitude(spectrogram)
-		data = lb.istft(spectrogram * phase, self.hop)
+	def reconstruct_signal(self, real, imag, mixed_signal):
+		data = lb.istft(real + imag * 1j, self.hop)
 		data *= self.std
 		data += self.mean
 		data = data.astype('int16')

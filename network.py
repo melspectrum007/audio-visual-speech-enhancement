@@ -283,18 +283,24 @@ class SpeechEnhancementNetwork(object):
 			verbose=1
 		)
 
-	def predict(self, mixed_spectrograms, video_samples):
-		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
+	def predict(self, mixed_stft, video_samples):
 		video_samples = np.expand_dims(video_samples, -1)  # append channels axis
-		speech_spectrograms = self.__model.predict([mixed_spectrograms, video_samples])
+		mixed_real = np.expand_dims(mixed_stft[:, :, :, 0], -1)  # append channels axis
+		mixed_imag = np.expand_dims(mixed_stft[:, :, :, 1], -1)  # append channels axis
 
-		return np.squeeze(speech_spectrograms)
+		real_enhanced, imag_enhanced = self.__model.predict([mixed_real, mixed_imag, video_samples])
 
-	def evaluate(self, mixed_spectrograms, video_samples, speech_spectrograms):
-		mixed_spectrograms = np.expand_dims(mixed_spectrograms, -1)  # append channels axis
+		return real_enhanced, imag_enhanced
+
+	def evaluate(self, mixed_stft, video_samples, speech_spectrograms):
+		video_samples = np.expand_dims(video_samples, -1)  # append channels axis
+		mixed_real = np.expand_dims(mixed_stft[:, :, :, 0], -1)  # append channels axis
+		mixed_imag = np.expand_dims(mixed_stft[:, :, :, 1], -1)  # append channels axis
+
+		mixed_stft = np.expand_dims(mixed_stft, -1)  # append channels axis
 		speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
 		
-		loss = self.__model.evaluate(x=[mixed_spectrograms, video_samples], y=speech_spectrograms)
+		loss = self.__model.evaluate(x=[mixed_stft, video_samples], y=speech_spectrograms)
 
 		return loss
 

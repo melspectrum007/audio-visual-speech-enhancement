@@ -113,30 +113,36 @@ def predict(args):
 			try:
 				print('predicting (%s, %s)...' % (video_file_path, noise_file_path))
 				mixed_signal = utils.mix_source_noise(speech_file_path, noise_file_path)
-				video_samples, mixed_spectrograms, label_spectrograms = data_processor.preprocess_sample(
+				video_samples, mixed_spectrograms, label_stfts = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path)
 
 				video_normalizer.normalize(video_samples)
 
 				# loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
 				# print('loss: %f' % loss)
-				mixed_spectrograms = mixed_spectrograms[:, :-1, :]
-				enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
+				mixed_spectrograms = mixed_spectrograms[:, :-1, :, :]
+				enhanced_real, enhanced_imag = network.predict(mixed_spectrograms, video_samples)
 
-				enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
-				mixed_spec = data_processor.get_stft(mixed_signal.get_data())[0]
-				label_spec = np.concatenate(list(label_spectrograms), axis=1)
+				enhanced_real = np.concatenate(list(enhanced_real), axis=1)
+				enhanced_imag = np.concatenate(list(enhanced_imag), axis=1)
 
-				enhanced_spec = lb.amplitude_to_db(enhanced_spec)
+				mixed_stft = data_processor.get_stft(mixed_signal.get_data())
+				mixed_real = mixed_stft[:,:, 0]
+				mixed_imag = mixed_stft[:,:, 1]
 
-				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_spec, mixed_signal)
+				label_real = np.concatenate(list(label_stfts[:,:,:,0]), axis=1)
+				label_imag = np.concatenate(list(label_stfts[:,:,:,1]), axis=1)
+
+				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_real, enhanced_imag, mixed_signal)
 
 				sample_dir = storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path, speech_file_path,
-					mixed_signal, predicted_speech_signal, enhanced_spec
+					mixed_signal, predicted_speech_signal, enhanced_real
 				)
 
-				storage.save_spectrograms([enhanced_spec, mixed_spec, label_spec], ['enhanced', 'mixed', 'source'], sample_dir)
+				storage.save_spectrograms([enhanced_real, enhanced_imag, mixed_real, mixed_imag, label_real, label_imag],
+										  ['enhanced real', 'endanced imag', 'mixed real', 'mixed imag', 'source real',  'source imag'],
+										  sample_dir)
 
 			except Exception:
 				logging.exception('failed to predict %s. skipping' % video_file_path)
