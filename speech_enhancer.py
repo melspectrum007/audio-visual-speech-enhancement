@@ -94,6 +94,7 @@ def train(args):
 def predict(args):
 	storage = PredictionStorage(args.prediction_output_dir)
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
+	network.__model.summary()
 
 	with open(args.normalization_cache, 'rb') as normalization_fd:
 		video_normalizer = pickle.load(normalization_fd)

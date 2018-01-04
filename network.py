@@ -24,13 +24,13 @@ class SpeechEnhancementNetwork(object):
 
 		audio_encoder = cls.__build_audio_encoder(extended_audio_spectrogram_shape)
 		real_audio_embedding = audio_encoder(real_audio_input)
-		imag_audio_embedding = audio_encoder(real_audio_input)
+		imag_audio_embedding = audio_encoder(imag_audio_input)
 
 		video_encoder = cls.__build_video_encoder(video_shape)
 		video_embedding = video_encoder(video_input)
 
 		real_shared_embeding = concatenate([real_audio_embedding, video_embedding], axis=1)
-		imag_shared_embeding = concatenate([real_audio_embedding, video_embedding], axis=1)
+		imag_shared_embeding = concatenate([imag_audio_embedding, video_embedding], axis=1)
 
 		model = Model(inputs=[real_audio_input, imag_audio_input, video_input], outputs=[real_shared_embeding, imag_shared_embeding])
 		print 'Encoder'
@@ -316,12 +316,6 @@ class SpeechEnhancementNetwork(object):
 
 		return SpeechEnhancementNetwork(model)
 
-	# @staticmethod
-	# def batch_stretch_0_to_1(batch):
-	# 	orig_shape = batch.shape
-	# 	batch = batch.reshape(orig_shape[0], -1)
-	# 	stretched = ((batch.T - batch.min(axis=1)) / (batch.max(axis=1) - batch.min(axis=1))).T
-	# 	return stretched.reshape(orig_shape)
 
 class ModelCache(object):
 
