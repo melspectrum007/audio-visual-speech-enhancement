@@ -16,6 +16,9 @@ class SpeechEnhancementNetwork(object):
 	def __init__(self, model):
 		self.__model = model
 
+	def summerize(self):
+		self.__model.summary()
+
 	@classmethod
 	def __build_encoder(cls, extended_audio_spectrogram_shape, video_shape):
 		real_audio_input = Input(shape=extended_audio_spectrogram_shape)

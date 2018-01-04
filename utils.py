@@ -68,7 +68,7 @@ class DataProcessor(object):
 			real = lb.amplitude_to_db(real)
 			imag = lb.amplitude_to_db(imag)
 
-		return np.stack((real, imag))
+		return np.stack((real, imag), axis=-1)
 
 	def preprocess_inputs(self, frames, mixed_signal):
 		video_samples = self.preprocess_video(frames)

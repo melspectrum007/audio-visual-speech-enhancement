@@ -94,7 +94,7 @@ def train(args):
 def predict(args):
 	storage = PredictionStorage(args.prediction_output_dir)
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
-	network.__model.summary()
+	network.summerize()
 
 	with open(args.normalization_cache, 'rb') as normalization_fd:
 		video_normalizer = pickle.load(normalization_fd)
@@ -122,6 +122,7 @@ def predict(args):
 				# loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
 				# print('loss: %f' % loss)
 				mixed_spectrograms = mixed_spectrograms[:, :-1, :, :]
+				print mixed_spectrograms.shape
 				enhanced_real, enhanced_imag = network.predict(mixed_spectrograms, video_samples)
 
 				enhanced_real = np.concatenate(list(enhanced_real), axis=1)
