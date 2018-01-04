@@ -121,8 +121,6 @@ def predict(args):
 				mixed_spec = data_processor.get_mag_phase(mixed_signal.get_data())[0]
 				label_spec = np.concatenate(list(label_spectrograms), axis=1)
 
-				enhanced_spec = lb.amplitude_to_db(enhanced_spec)
-
 				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_spec, mixed_signal)
 
 				sample_dir = storage.save_prediction(
