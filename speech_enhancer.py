@@ -135,7 +135,7 @@ def predict(args):
 
 def test(args):
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
-	normalization_path = args.model_cache_dir + 'normalization.pkl'
+	normalization_path = args.model_cache_dir + '/normalization.pkl'
 	with open(normalization_path, 'rb') as normalization_fd:
 		video_normalizer = pickle.load(normalization_fd)
 
@@ -144,12 +144,12 @@ def test(args):
 	for input_path in input_paths:
 		with VideoFileReader(input_path) as reader:
 			fps = reader.get_frame_rate()
-			ffmpeg.extract_audio(input_path, '/tmp/tmp.wav')
-			mixed_signal = AudioSignal.from_wav_file('/tmp/tmp.wav')
+			ffmpeg.extract_audio(input_path, '/cs/grad/asaph/testing/tmp.wav')
+			mixed_signal = AudioSignal.from_wav_file('/cs/grad/asaph/testing/tmp.wav')
 			sr = mixed_signal.get_sample_rate()
 
 			dataProcessor = utils.DataProcessor(fps, sr)
-			video_sampels, mixed_spectrograms = dataProcessor.preprocess_inputs(reader.read_all_frames())
+			video_sampels, mixed_spectrograms = dataProcessor.preprocess_inputs(reader.read_all_frames(convert_to_gray_scale=True), mixed_signal)
 			video_normalizer.normalize(video_sampels)
 
 			enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_sampels)
@@ -264,8 +264,9 @@ def main():
 	predict_parser.set_defaults(func=predict)
 
 	test_parser = action_parsers.add_parser('test')
-	test_parser.add_argument('--paths', type=str, nargs='+', required=True)
-	test_parser.add_argument('--model_cache_dir', type=str, required=True)
+	test_parser.add_argument('-p', '--paths', type=str, nargs='+', required=True)
+	test_parser.add_argument('-mn', '--model_cache_dir', type=str, required=True)
+	test_parser.set_defaults(func=test)
 
 	args = parser.parse_args()
 	args.func(args)
