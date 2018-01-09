@@ -133,6 +133,30 @@ def predict(args):
 			except Exception:
 				logging.exception('failed to predict %s. skipping' % video_file_path)
 
+def test(args):
+	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
+	normalization_path = args.model_cache_dir + 'normalization.pkl'
+	with open(normalization_path, 'rb') as normalization_fd:
+		video_normalizer = pickle.load(normalization_fd)
+
+	input_paths = args.paths
+
+	for input_path in input_paths:
+		with VideoFileReader(input_path) as reader:
+			fps = reader.get_frame_rate()
+			ffmpeg.extract_audio(input_path, '/tmp/tmp.wav')
+			mixed_signal = AudioSignal.from_wav_file('/tmp/tmp.wav')
+			sr = mixed_signal.get_sample_rate()
+
+			dataProcessor = utils.DataProcessor(fps, sr)
+			video_sampels, mixed_spectrograms = dataProcessor.preprocess_inputs(reader.read_all_frames())
+			video_normalizer.normalize(video_sampels)
+
+			enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_sampels)
+			enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
+			predicted_speech_signal = dataProcessor.reconstruct_signal(enhanced_spec, mixed_signal)
+
+			predicted_speech_signal.save_to_wav_file(os.path.splitext(input_path)[0] + '.wav')
 
 class PredictionStorage(object):
 
@@ -238,6 +262,10 @@ def main():
 	predict_parser.add_argument('--speakers', nargs='+', type=str)
 	predict_parser.add_argument('--ignored_speakers', nargs='+', type=str)
 	predict_parser.set_defaults(func=predict)
+
+	test_parser = action_parsers.add_parser('test')
+	test_parser.add_argument('--paths', type=str, nargs='+', required=True)
+	test_parser.add_argument('--model_cache_dir', type=str, required=True)
 
 	args = parser.parse_args()
 	args.func(args)
