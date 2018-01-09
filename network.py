@@ -3,6 +3,7 @@ import os
 from keras import optimizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling3D, Deconvolution2D, Convolution3D, LSTM, Bidirectional
 from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, Activation, Lambda, Add
+
 from keras.layers.merge import concatenate, add, Multiply
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
@@ -38,23 +39,27 @@ class SpeechEnhancementNetwork(object):
 	@staticmethod
 	def __build_audio_encoder(extended_audio_spectrogram_shape):
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
-		x = Convolution2D(32, kernel_size=(5, 5), strides=(5, 1), padding='same')(audio_input)
+		x = Convolution2D(64, kernel_size=(5, 5), strides=(2, 1), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(32, kernel_size=(5, 5), strides=(2, 1), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-
-		x = Convolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-
-		x = Convolution2D(64, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
+		x = Convolution2D(64, kernel_size=(5, 5), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
 		x = Convolution2D(128, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(128, kernel_size=(3, 3), strides=(1, 1), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(256, kernel_size=(3, 3), strides=(2, 1), padding='same')(x)
+		x = BatchNormalization()(x)
+		x = LeakyReLU()(x)
+
+		x = Convolution2D(256, kernel_size=(3, 3), strides=(5, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -133,23 +138,22 @@ class SpeechEnhancementNetwork(object):
 
 		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(audio_spec)
 		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
+		x = Activation('tanh')(x)
 
 		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(x)
 		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
+		x = Activation('tanh')(x)
 
 		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(x)
 		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
+		x = Activation('tanh')(x)
 
 		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(x)
 		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
+		x = Activation('tanh')(x)
 
 		x = Convolution2D(128, kernel_size=(5, 1), padding='same')(x)
 		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
 
 		x = Convolution2D(1, kernel_size=(1, 1), padding='same')(x)
 
@@ -191,7 +195,7 @@ class SpeechEnhancementNetwork(object):
 		)
 
 
-		attention = cls.__build_attention((20, 256))
+		attention = cls.__build_attention((20, 384))
 		decoder = cls.__build_audio_decoder((80, 20, 1))
 
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
