@@ -76,7 +76,7 @@ def train(args):
 	with open(args.normalization_cache, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
-	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:-1], train_video_samples.shape[1:])
+	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
 	network.train(
 		train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
 		validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
