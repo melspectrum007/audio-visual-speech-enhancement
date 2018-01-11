@@ -67,10 +67,13 @@ class DataProcessor(object):
 
 		return mag, phase
 
+	def get_normalization(self, signal):
+		self.mean, self.std	= signal.normalize()
+
 	def preprocess_inputs(self, frames, mixed_signal):
 		video_samples = self.preprocess_video(frames)
 
-		self.mean, self.std = mixed_signal.normalize()
+		self.get_normalization(mixed_signal)
 
 		mixed_spectrogram = self.get_mag_phase(mixed_signal.get_data())[0]
 		mixed_spectrograms = self.slice_input_spectrogram(mixed_spectrogram)
@@ -152,7 +155,7 @@ def mix_source_noise(source_path, noies_path):
 	if source.get_number_of_samples() < noise.get_number_of_samples():
 		noise.truncate(source.get_number_of_samples())
 	else:
-		source.truncate(noise.get_number_of_samples())
+		noise.pad_with_zeros(source.get_number_of_samples())
 	noise.amplify(source, 0)
 
 	return AudioMixer().mix([source, noise])

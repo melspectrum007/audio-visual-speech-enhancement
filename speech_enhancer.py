@@ -96,7 +96,7 @@ def predict(args):
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=2, shuffle=True
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5, shuffle=True
 		)
 
 		fps = VideoFileReader(video_file_paths[0]).get_frame_rate()
@@ -154,9 +154,15 @@ def test(args):
 
 			enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_sampels)
 			enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
-			predicted_speech_signal = dataProcessor.reconstruct_signal(enhanced_spec, mixed_signal)
+			mixed_spec = np.concatenate(list(mixed_spectrograms), axis=1)
 
+			# mixed_signal = AudioSignal.from_wav_file('/cs/grad/asaph/testing/mixture.wav')
+
+			predicted_speech_signal = dataProcessor.reconstruct_signal(enhanced_spec, mixed_signal)
 			predicted_speech_signal.save_to_wav_file(os.path.splitext(input_path)[0] + '.wav')
+
+			np.save(os.path.split(input_path)[0] + '/mixed.npy', mixed_spec)
+			np.save(os.path.split(input_path)[0] + '/enhanced.npy', enhanced_spec)
 
 class PredictionStorage(object):
 
