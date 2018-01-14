@@ -65,8 +65,8 @@ class DataProcessor(object):
 		# 	mag = np.dot(mel._MEL_FILTER, mag)
 
 		if self.db:
-			real = lb.amplitude_to_db(real)
-			imag = lb.amplitude_to_db(imag)
+			real = lb.amplitude_to_db(np.abs(real)) * np.sign(real)
+			imag = lb.amplitude_to_db(np.abs(imag)) * np.sign(imag)
 
 		return np.stack((real, imag), axis=-1)
 
