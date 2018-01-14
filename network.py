@@ -10,7 +10,6 @@ from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, T
 
 import keras.backend as tf
 import numpy as np
-import librosa as lb
 
 class SpeechEnhancementNetwork(object):
 

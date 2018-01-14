@@ -1,6 +1,5 @@
 import argparse, os, logging, pickle
 import numpy as np
-import librosa as lb
 import utils
 import data_processor as dp
 
@@ -96,7 +95,7 @@ def predict(args):
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5, shuffle=True
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5, shuffle=False
 		)
 
 		fps = VideoFileReader(video_file_paths[0]).get_frame_rate()
@@ -121,7 +120,7 @@ def predict(args):
 				mixed_spec = data_processor.get_mag_phase(mixed_signal.get_data())[0]
 				label_spec = np.concatenate(list(label_spectrograms), axis=1)
 
-				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_spec, mixed_signal)
+				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_spec, mixed_signal, use_griffin_lim=False)
 
 				sample_dir = storage.save_prediction(
 					speaker_id, video_file_path, noise_file_path, speech_file_path,

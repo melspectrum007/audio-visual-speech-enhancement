@@ -11,6 +11,7 @@ MOUTH_WIDTH = 128
 MOUTH_HEIGHT = 128
 BINS_PER_FRAME = 4
 SAMPLE_RATE = 16000
+GRIF_LIM_ITERS = 100
 
 class DataProcessor(object):
 
@@ -107,19 +108,25 @@ class DataProcessor(object):
 			# traceback.print_exc()
 			return None
 
-	def reconstruct_signal(self, spectrogram, mixed_signal):
+	def reconstruct_signal(self, spectrogram, mixed_signal, use_griffin_lim=False):
 		phase = self.get_mag_phase(mixed_signal.get_data())[1]
+		n_frames = min(spectrogram.shape[1], phase.shape[1])
+		spectrogram = spectrogram[:, :n_frames]
+		phase = phase[:, :n_frames]
+
 		if self.db:
 			spectrogram = lb.db_to_amplitude(spectrogram)
 		if self.mel:
 			mel = MelConverter(self.audio_sr, self.nfft_single_frame, self.hop, 80, 0, 8000)
 			spectrogram = np.dot(np.linalg.pinv(mel._MEL_FILTER), spectrogram)
+		else:
+			phase = phase[:-1, :]
 
-		n_frames = min(spectrogram.shape[1], phase.shape[1])
-		spectrogram = spectrogram[:, :n_frames]
-		phase = phase[:, :n_frames]
+		if use_griffin_lim:
+			data = griffin_lim(spectrogram, self.nfft_single_frame, self.hop, GRIF_LIM_ITERS, phase)
+		else:
+			data = lb.istft(spectrogram * phase, self.hop)
 
-		data = lb.istft(spectrogram * phase, self.hop)
 		data *= self.std
 		data += self.mean
 		data = data.astype('int16')
@@ -187,3 +194,20 @@ def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 		np.concatenate(mixed_spectrograms),
 		np.concatenate(source_spectrogarms)
 	)
+
+def griffin_lim(magnitude, n_fft, hop_length, n_iterations, initial_phase=None):
+	"""Iterative algorithm for phase retrival from a magnitude spectrogram."""
+	if initial_phase is None:
+		phase = np.exp(1j * np.pi * np.random.rand(*magnitude.shape))
+	else:
+		phase = initial_phase
+
+	signal = lb.istft(magnitude * phase, hop_length=hop_length)
+
+	for i in range(n_iterations):
+		D = lb.stft(signal, n_fft=n_fft, hop_length=hop_length)
+		phase = lb.magphase(D)[1]
+
+		signal = lb.istft(magnitude * phase, hop_length=hop_length)
+
+	return signal
