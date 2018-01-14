@@ -196,9 +196,6 @@ class SpeechEnhancementNetwork(object):
 
 	@classmethod
 	def build(cls, audio_shape, video_shape):
-		# append channels axis
-		# extended_audio_spectrogram_shape = list(audio_spectrogram_shape)
-		# extended_audio_spectrogram_shape.append(1)
 
 		video_shape = list(video_shape)
 		video_shape.append(1)
@@ -225,7 +222,7 @@ class SpeechEnhancementNetwork(object):
 
 		model = Model(inputs=[audio_input, video_input], outputs=[audio_output])
 
-		optimizer = optimizers.adam(lr=5e-4)
+		optimizer = optimizers.adam(lr=1e-3)
 		model.compile(loss='mean_squared_error', optimizer=optimizer)
 		print 'Net'
 		model.summary()
@@ -235,6 +232,8 @@ class SpeechEnhancementNetwork(object):
 	def train(self, train_mixed, train_video_samples, train_label,
 			  validation_mixed, validation_video_samples, validation_label,
 			  model_cache_dir, tensorboard_dir=None):
+		train_video_samples = np.expand_dims(train_video_samples, -1)
+		validation_video_samples = np.expand_dims(validation_video_samples, -1)
 
 		train_label = 10 ** (np.abs(train_label) / 20) * np.sign(train_label)
 		validation_label = 10 ** (np.abs(validation_label) / 20) * np.sign(validation_label)
