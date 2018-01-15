@@ -65,8 +65,8 @@ class DataProcessor(object):
 		# 	mag = np.dot(mel._MEL_FILTER, mag)
 
 		if self.db:
-			real = lb.amplitude_to_db(np.abs(real)) * np.sign(real)
-			imag = lb.amplitude_to_db(np.abs(imag)) * np.sign(imag)
+			real = (np.log(np.abs(real) + 1)) * np.sign(real)
+			imag = (np.log(np.abs(imag) + 1)) * np.sign(imag)
 
 		return np.stack((real, imag), axis=-1)
 
@@ -108,7 +108,13 @@ class DataProcessor(object):
 			return None
 
 	def reconstruct_signal(self, stft, mixed_signal):
-		stft = stft[:,:,0] + 1j * stft[:,:,1]
+		real = stft[:,:,0]
+		imag = stft[:,:,1]
+		if self.db:
+			real = np.sign(real) * (np.exp(np.abs(real)) - 1)
+			imag = np.sign(imag) * (np.exp(np.abs(imag)) - 1)
+
+		stft = real + 1j * imag
 		data = lb.istft(stft, self.hop)
 		data *= self.std
 		data += self.mean

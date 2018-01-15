@@ -163,7 +163,7 @@ class SpeechEnhancementNetwork(object):
 
 		x = Activation('sigmoid')(x)
 
-		model = Model(inputs=embedding, outputs=x)
+		model = Model(inputs=embedding, oureggie wattstputs=x)
 		print 'Decoder'
 		model.summary()
 
