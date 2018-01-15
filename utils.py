@@ -107,8 +107,9 @@ class DataProcessor(object):
 			traceback.print_exc()
 			return None
 
-	def reconstruct_signal(self, real, imag, mixed_signal):
-		data = lb.istft(real + imag * 1j, self.hop)
+	def reconstruct_signal(self, stft, mixed_signal):
+		stft = stft[:,:,0] + 1j * stft[:,:,1]
+		data = lb.istft(stft, self.hop)
 		data *= self.std
 		data += self.mean
 		data = data.astype('int16')
