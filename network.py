@@ -43,7 +43,7 @@ class SpeechEnhancementNetwork(object):
 	@staticmethod
 	def __build_audio_encoder(extended_audio_spectrogram_shape):
 		audio_input = Input(shape=extended_audio_spectrogram_shape)
-		x = Convolution2D(64, kernel_size=(5, 5), strides=(1, 1), padding='same')(audio_input)
+		x = Convolution2D(64, kernel_size=(5, 5), strides=(2, 1), padding='same')(audio_input)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -135,7 +135,7 @@ class SpeechEnhancementNetwork(object):
 	def __build_decoder(embedding_shape):
 
 		embedding = Input(embedding_shape)
-		embedding_expanded = Reshape((160, 8, 44))(embedding)
+		embedding_expanded = Reshape((80, 8, 44))(embedding)
 		embedding_expanded = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 3, 2)))(embedding_expanded)
 
 
@@ -155,7 +155,7 @@ class SpeechEnhancementNetwork(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Deconvolution2D(64, kernel_size=(5, 5), strides=(1, 1), padding='same')(x)
+		x = Deconvolution2D(64, kernel_size=(5, 5), strides=(2, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
@@ -175,7 +175,7 @@ class SpeechEnhancementNetwork(object):
 
 		x = Bidirectional(LSTM(hidden_units, return_sequences=True))(shared_input)
 
-		mask = LSTM(1280, activation='sigmoid', return_sequences=True)(x)
+		mask = LSTM(640, activation='sigmoid', return_sequences=True)(x)
 
 		model = Model(inputs=shared_input, outputs=mask)
 		print 'Attention'
@@ -191,11 +191,11 @@ class SpeechEnhancementNetwork(object):
 		video_shape.append(1)
 
 		encoder = cls.__build_encoder(audio_shape, video_shape)
-		attention = cls.__build_attention((NUM_FRAMES, 1536), 1024)
-		decoder = cls.__build_decoder((1280, 44))
+		attention = cls.__build_attention((NUM_FRAMES, 896), 1024)
+		decoder = cls.__build_decoder((640, 44))
 
 		Permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
-		Db2amp = Lambda(lambda x: 10 ** (tf.abs(x) / 20) * tf.sign(x))
+		# Db2amp = Lambda(lambda x: 10 ** (tf.abs(x) / 20) * tf.sign(x))
 
 		audio_input = Input(shape=audio_shape)
 		video_input = Input(shape=video_shape)
@@ -203,15 +203,11 @@ class SpeechEnhancementNetwork(object):
 		shared_embeding = encoder([audio_input, video_input])
 		shared_embeding = Permute_axis(shared_embeding)
 
-		mask = attention(shared_embeding)
-		mask = Permute_axis(mask)
-		mask = decoder(mask)
+		output = attention(shared_embeding)
+		output = Permute_axis(output)
+		output = decoder(output)
 
-		audio_input_linear = Db2amp(audio_input)
-
-		audio_output = Multiply()([mask, audio_input_linear])
-
-		model = Model(inputs=[audio_input, video_input], outputs=[audio_output])
+		model = Model(inputs=[audio_input, video_input], outputs=[output])
 
 		optimizer = optimizers.adam(lr=5e-4)
 		model.compile(loss='mean_squared_error', optimizer=optimizer)

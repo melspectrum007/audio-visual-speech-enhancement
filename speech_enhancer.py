@@ -114,21 +114,25 @@ def predict(args):
 			try:
 				print('predicting (%s, %s)...' % (video_file_path, noise_file_path))
 				mixed_signal = utils.mix_source_noise(speech_file_path, noise_file_path)
-				video_samples, mixed_spectrograms, label_stfts = data_processor.preprocess_sample(
+				video_samples, mixed_stfts, label_stfts = data_processor.preprocess_sample(
 					video_file_path, speech_file_path, noise_file_path)
-
 				video_normalizer.normalize(video_samples)
 
-				# loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
-				# print('loss: %f' % loss)
-				mixed_spectrograms = mixed_spectrograms[:, :-1, :, :]
-				print mixed_spectrograms.shape
-				enhanced_stft = network.predict(mixed_spectrograms, video_samples)
+				spec_dict = {}
 
+				mixed_stfts = mixed_stfts[:, :-1, :, :]
+
+				enhanced_stft = network.predict(mixed_stfts, video_samples)
 				enhanced_stft = np.concatenate(list(enhanced_stft), axis=1)
-
+				label_stft = np.concatenate(list(label_stfts), axis=1)
 				mixed_stft = data_processor.get_stft(mixed_signal.get_data())
 
+				spec_dict['mixed real'] = np.abs(mixed_stft[:,:,0])
+				spec_dict['mixed imag'] = np.abs(mixed_stft[:,:,1])
+				spec_dict['label real'] = np.abs(label_stft[:,:,0])
+				spec_dict['label imag'] = np.abs(label_stft[:,:,1])
+				spec_dict['enhanced real'] = lb.amplitude_to_db(np.abs(enhanced_stft[:,:,0]))
+				spec_dict['enhanced imag'] = lb.amplitude_to_db(np.abs(enhanced_stft[:,:,1]))
 
 				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_stft, mixed_signal)
 
@@ -137,9 +141,7 @@ def predict(args):
 					mixed_signal, predicted_speech_signal, enhanced_stft
 				)
 
-				# storage.save_spectrograms([enhanced_stft, enhanced_imag, mixed_real, mixed_imag, label_real, label_imag],
-				# 						  ['enhanced real', 'endanced imag', 'mixed real', 'mixed imag', 'source real',  'source imag'],
-				# 						  sample_dir)
+				save_spectrograms(spec_dict, sample_dir)
 
 			except Exception:
 				logging.exception('failed to predict %s. skipping' % video_file_path)
@@ -190,9 +192,9 @@ class PredictionStorage(object):
 
 		return sample_prediction_dir
 
-	def save_spectrograms(self, spectrograms, names, dir_path):
-		for i, spec in enumerate(spectrograms):
-			np.save(os.path.join(dir_path, names[i]), spec)
+def save_spectrograms(spec_dict, dir_path):
+	for name, spec in spec_dict.iteritems():
+		np.save(os.path.join(dir_path, name), spec)
 
 def list_speakers(args):
 	if args.speakers is None:
