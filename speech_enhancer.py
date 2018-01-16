@@ -102,7 +102,7 @@ def predict(args):
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=2, shuffle=True
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5, shuffle=True
 		)
 
 		fps = VideoFileReader(video_file_paths[0]).get_frame_rate()
@@ -127,12 +127,12 @@ def predict(args):
 				label_stft = np.concatenate(list(label_stfts), axis=1)
 				mixed_stft = data_processor.get_stft(mixed_signal.get_data())
 
-				spec_dict['mixed real'] = np.abs(mixed_stft[:,:,0])
-				spec_dict['mixed imag'] = np.abs(mixed_stft[:,:,1])
-				spec_dict['label real'] = np.abs(label_stft[:,:,0])
-				spec_dict['label imag'] = np.abs(label_stft[:,:,1])
-				spec_dict['enhanced real'] = lb.amplitude_to_db(np.abs(enhanced_stft[:,:,0]))
-				spec_dict['enhanced imag'] = lb.amplitude_to_db(np.abs(enhanced_stft[:,:,1]))
+				spec_dict['mixed real'] = mixed_stft[:,:,0]
+				spec_dict['mixed imag'] = mixed_stft[:,:,1]
+				spec_dict['label real'] = label_stft[:,:,0]
+				spec_dict['label imag'] = label_stft[:,:,1]
+				spec_dict['enhanced real'] = np.sign(enhanced_stft[:,:,0]) * np.log(np.abs(enhanced_stft[:,:,0]) + 1)
+				spec_dict['enhanced imag'] = np.sign(enhanced_stft[:,:,1]) * np.log(np.abs(enhanced_stft[:,:,1]) + 1)
 
 				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_stft, mixed_signal)
 

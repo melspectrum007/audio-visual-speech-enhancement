@@ -195,7 +195,7 @@ class SpeechEnhancementNetwork(object):
 		decoder = cls.__build_decoder((640, 44))
 
 		Permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
-		# Db2amp = Lambda(lambda x: 10 ** (tf.abs(x) / 20) * tf.sign(x))
+		Db2amp = Lambda(lambda x: ((tf.exp(tf.abs(x)) - 1) * tf.sign(x)))
 
 		audio_input = Input(shape=audio_shape)
 		video_input = Input(shape=video_shape)
@@ -203,9 +203,13 @@ class SpeechEnhancementNetwork(object):
 		shared_embeding = encoder([audio_input, video_input])
 		shared_embeding = Permute_axis(shared_embeding)
 
-		output = attention(shared_embeding)
-		output = Permute_axis(output)
-		output = decoder(output)
+		mask = attention(shared_embeding)
+		mask = Permute_axis(mask)
+		mask = decoder(mask)
+
+		linear_audio = Db2amp(audio_input)
+
+		output = Multiply()([mask, linear_audio])
 
 		model = Model(inputs=[audio_input, video_input], outputs=[output])
 
@@ -253,17 +257,17 @@ class SpeechEnhancementNetwork(object):
 
 		return real_enhanced
 
-	def evaluate(self, mixed_stft, video_samples, speech_spectrograms):
-		video_samples = np.expand_dims(video_samples, -1)  # append channels axis
-		mixed_real = np.expand_dims(mixed_stft[:, :, :, 0], -1)  # append channels axis
-		mixed_imag = np.expand_dims(mixed_stft[:, :, :, 1], -1)  # append channels axis
-
-		mixed_stft = np.expand_dims(mixed_stft, -1)  # append channels axis
-		speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
-		
-		loss = self.__model.evaluate(x=[mixed_stft, video_samples], y=speech_spectrograms)
-
-		return loss
+	# def evaluate(self, mixed_stft, video_samples, speech_spectrograms):
+	# 	video_samples = np.expand_dims(video_samples, -1)  # append channels axis
+	# 	mixed_real = np.expand_dims(mixed_stft[:, :, :, 0], -1)  # append channels axis
+	# 	mixed_imag = np.expand_dims(mixed_stft[:, :, :, 1], -1)  # append channels axis
+	#
+	# 	mixed_stft = np.expand_dims(mixed_stft, -1)  # append channels axis
+	# 	speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
+	#
+	# 	loss = self.__model.evaluate(x=[mixed_stft, video_samples], y=speech_spectrograms)
+	#
+	# 	return loss
 
 	def save(self, model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
