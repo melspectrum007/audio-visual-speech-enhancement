@@ -131,8 +131,8 @@ def predict(args):
 				spec_dict['mixed imag'] = mixed_stft[:,:,1]
 				spec_dict['label real'] = label_stft[:,:,0]
 				spec_dict['label imag'] = label_stft[:,:,1]
-				spec_dict['enhanced real'] = np.sign(enhanced_stft[:,:,0]) * np.log(np.abs(enhanced_stft[:,:,0]) + 1)
-				spec_dict['enhanced imag'] = np.sign(enhanced_stft[:,:,1]) * np.log(np.abs(enhanced_stft[:,:,1]) + 1)
+				spec_dict['enhanced real'] = enhanced_stft[:,:,0]
+				spec_dict['enhanced imag'] = enhanced_stft[:,:,1]
 
 				predicted_speech_signal = data_processor.reconstruct_signal(enhanced_stft, mixed_signal)
 

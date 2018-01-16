@@ -195,7 +195,6 @@ class SpeechEnhancementNetwork(object):
 		decoder = cls.__build_decoder((640, 44))
 
 		Permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
-		Db2amp = Lambda(lambda x: ((tf.exp(tf.abs(x)) - 1) * tf.sign(x)))
 
 		audio_input = Input(shape=audio_shape)
 		video_input = Input(shape=video_shape)
@@ -205,11 +204,7 @@ class SpeechEnhancementNetwork(object):
 
 		mask = attention(shared_embeding)
 		mask = Permute_axis(mask)
-		mask = decoder(mask)
-
-		linear_audio = Db2amp(audio_input)
-
-		output = Multiply()([mask, linear_audio])
+		output = decoder(mask)
 
 		model = Model(inputs=[audio_input, video_input], outputs=[output])
 
@@ -225,9 +220,6 @@ class SpeechEnhancementNetwork(object):
 			  model_cache_dir, tensorboard_dir=None):
 		train_video_samples = np.expand_dims(train_video_samples, -1)
 		validation_video_samples = np.expand_dims(validation_video_samples, -1)
-
-		train_label = 10 ** (np.abs(train_label) / 20) * np.sign(train_label)
-		validation_label = 10 ** (np.abs(validation_label) / 20) * np.sign(validation_label)
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)

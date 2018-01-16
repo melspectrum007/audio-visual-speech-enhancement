@@ -110,9 +110,10 @@ class DataProcessor(object):
 	def reconstruct_signal(self, stft, mixed_signal):
 		real = stft[:,:,0]
 		imag = stft[:,:,1]
-		# if self.db:
-		# 	real = np.sign(real) * (np.exp(np.abs(real)) - 1)
-		# 	imag = np.sign(imag) * (np.exp(np.abs(imag)) - 1)
+
+		if self.db:
+			real = np.sign(real) * (np.exp(np.abs(real)) - 1)
+			imag = np.sign(imag) * (np.exp(np.abs(imag)) - 1)
 
 		stft = real + 1j * imag
 		data = lb.istft(stft, self.hop)
