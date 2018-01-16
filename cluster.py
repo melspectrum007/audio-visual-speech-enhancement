@@ -6,7 +6,7 @@ from subprocess import Popen
 
 def preprocess(args):
 	cmdline = [
-		'srun', '--mem=%d' % args.mem, '-c%d' % args.cpus, '--time=%s' % args.time,
+		'sbatch', '--mem=%d' % args.mem, '-c%d' % args.cpus, '--time=%s' % args.time,
 		'--job-name=preprocess-%s' % args.data_name, '--output=out/preprocess-%s.out' % args.data_name,
 		'scripts/preprocess.sh', args.data_name, args.dataset, ' '.join(args.speakers), ' '.join(args.noise_dirs),
 	]
@@ -17,7 +17,7 @@ def preprocess(args):
 
 def train(args):
 	cmdline = [
-		'srun', '--mem=%d' % args.mem, '--gres=gpu:%d' % args.gpus, '-c%d' % args.cpus, '--time=%s' % args.time,
+		'sbatch', '--mem=%d' % args.mem, '--gres=gpu:%d' % args.gpus, '-c%d' % args.cpus, '--time=%s' % args.time,
 		'--job-name=train-%s' % args.model, '--output=out/train-%s.out' % args.model,
 		'scripts/train.sh', args.model, ' '.join(args.train_data_names), ' '.join(args.validation_data_names)
 	]
@@ -28,7 +28,7 @@ def train(args):
 
 def predict(args):
 	cmdline = [
-		'srun', '--mem=%d' % args.mem, '--gres=gpu:%d' % args.gpus, '-c%d' % args.cpus, '--time=%s' % args.time,
+		'sbatch', '--mem=%d' % args.mem, '--gres=gpu:%d' % args.gpus, '-c%d' % args.cpus, '--time=%s' % args.time,
 		'--job-name=predict-%s' % args.model, '--output=out/predict-%s.out' % args.model,
 		'scripts/predict.sh', args.model, args.dataset, ' '.join(args.speakers), ' '.join(args.noise_dirs)
 	]
