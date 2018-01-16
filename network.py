@@ -226,8 +226,8 @@ class SpeechEnhancementNetwork(object):
 		train_video_samples = np.expand_dims(train_video_samples, -1)
 		validation_video_samples = np.expand_dims(validation_video_samples, -1)
 
-		train_label = 10 ** (np.abs(train_label) / 20) * np.sign(train_label)
-		validation_label = 10 ** (np.abs(validation_label) / 20) * np.sign(validation_label)
+		train_label = np.exp(np.abs(train_label) - 1) * np.sign(train_label)
+		validation_label = np.exp(np.abs(validation_label) - 1) * np.sign(validation_label)
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
