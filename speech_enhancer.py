@@ -102,7 +102,7 @@ def predict(args):
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5, shuffle=True
+			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5, shuffle=False
 		)
 
 		fps = VideoFileReader(video_file_paths[0]).get_frame_rate()
