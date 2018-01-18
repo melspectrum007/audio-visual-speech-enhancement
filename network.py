@@ -175,7 +175,8 @@ class SpeechEnhancementNetwork(object):
 
 		x = Bidirectional(LSTM(hidden_units, return_sequences=True))(shared_input)
 
-		mask = LSTM(640, activation='sigmoid', return_sequences=True)(x)
+		mask = LSTM(640, activation='sigmoid', return_sequences=True, unroll=True)(x)
+		# mask = LSTM(640, activation='sigmoid', return_sequences=True, unroll=True)(mask)
 
 		model = Model(inputs=shared_input, outputs=mask)
 		print 'Attention'
@@ -192,7 +193,7 @@ class SpeechEnhancementNetwork(object):
 
 		encoder = cls.__build_encoder(audio_shape, video_shape)
 		attention = cls.__build_attention((NUM_FRAMES, 896), 1024)
-		decoder = cls.__build_decoder((640, 44))
+		# decoder = cls.__build_decoder((640, 44))
 
 		Permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
 		Db2amp = Lambda(lambda x: ((tf.exp(tf.abs(x)) - 1) * tf.sign(x)))
@@ -205,7 +206,10 @@ class SpeechEnhancementNetwork(object):
 
 		mask = attention(shared_embeding)
 		mask = Permute_axis(mask)
-		mask = decoder(mask)
+		mask = Reshape([320, 2, NUM_FRAMES])(mask)
+		mask = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 3, 2)))(mask)
+
+		# mask = decoder(mask)
 
 		linear_audio = Db2amp(audio_input)
 
