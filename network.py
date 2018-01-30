@@ -3,7 +3,7 @@ import os
 from keras import optimizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling3D, Deconvolution2D, Convolution3D, LSTM, Bidirectional
 from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, Activation, Lambda
-from keras.layers.merge import concatenate, add, Multiply
+from keras.layers.merge import concatenate, Multiply, Subtract, Add
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
 
@@ -197,6 +197,9 @@ class SpeechEnhancementNetwork(object):
 
 		Permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
 		Db2amp = Lambda(lambda x: ((tf.exp(tf.abs(x)) - 1) * tf.sign(x)))
+		Real = Lambda(lambda x: x[:,:,:,0])
+		Imag = Lambda(lambda x: x[:,:,:,1])
+		Stack = Lambda(lambda x: tf.stack(x, axis=-1))
 
 		audio_input = Input(shape=audio_shape)
 		video_input = Input(shape=video_shape)
@@ -213,7 +216,15 @@ class SpeechEnhancementNetwork(object):
 
 		linear_audio = Db2amp(audio_input)
 
-		output = Multiply()([mask, linear_audio])
+		in_real = Real(linear_audio)
+		in_imag = Imag(linear_audio)
+		mask_real = Real(mask)
+		mask_imag = Imag(mask)
+
+		output_real = Subtract()([Multiply()([in_real, mask_real]), Multiply()([in_imag, mask_imag])])
+		output_imag = Add()([Multiply()([in_imag, mask_real]), Multiply()([in_real, mask_imag])])
+
+		output = Stack([output_real, output_imag])
 
 		model = Model(inputs=[audio_input, video_input], outputs=[output])
 
