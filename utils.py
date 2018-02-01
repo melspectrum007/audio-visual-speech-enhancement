@@ -74,7 +74,7 @@ class DataProcessor(object):
 	def preprocess_inputs(self, frames, mixed_signal):
 		video_samples = self.preprocess_video(frames)
 
-		self.get_normalization(mixed_signal)
+		# self.get_normalization(mixed_signal)
 
 		mixed_spectrogram = self.get_mag_phase(mixed_signal.get_data())[0]
 		mixed_spectrograms = self.slice_input_spectrogram(mixed_spectrogram)
@@ -82,7 +82,7 @@ class DataProcessor(object):
 		return video_samples, mixed_spectrograms
 
 	def preprocess_label(self, source):
-		source.normalize(self.mean, self.std)
+		# source.normalize(self.mean, self.std)
 		label_spectrogram = self.get_mag_phase(source.get_data())[0]
 		slice_size = self.num_output_frames * BINS_PER_FRAME
 		return slice_spectrogram(label_spectrogram, slice_size, slice_size)
@@ -127,8 +127,8 @@ class DataProcessor(object):
 		else:
 			data = lb.istft(spectrogram * phase, self.hop)
 
-		data *= self.std
-		data += self.mean
+		# data *= self.std
+		# data += self.mean
 		data = data.astype('int16')
 		return AudioSignal(data, mixed_signal.get_sample_rate())
 
