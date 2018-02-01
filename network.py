@@ -1,8 +1,7 @@
 import os
 
 from keras import optimizers
-from keras.layers import Input, Dense, Convolution2D, MaxPooling3D, Deconvolution2D, Convolution3D, LSTM, Bidirectional
-from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, Activation, Lambda, Add, Multiply, Concatenate
+from keras.layers import *
 
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
@@ -66,7 +65,7 @@ class SpeechEnhancementNetwork(object):
 
 		T = extended_audio_spectrogram_shape[1]
 
-		x = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 3, 2)))(x)
+		x = Permute((1, 3, 2))(x)
 		x = Reshape((-1, T))(x)
 
 		model = Model(inputs=[audio_input], outputs=[x])
@@ -83,49 +82,50 @@ class SpeechEnhancementNetwork(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
+		x = Dropout(0.25)(x)
 
 		x = Convolution3D(32, kernel_size=(5, 5, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
+		x = Dropout(0.25)(x)
 
 		x = Convolution3D(64, kernel_size=(3, 3, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
+		x = Dropout(0.25)(x)
 
 		x = Convolution3D(64, kernel_size=(3, 3, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
+		x = Dropout(0.25)(x)
 
 		x = Convolution3D(128, kernel_size=(3, 3, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
+		x = Dropout(0.25)(x)
 
 		x = Convolution3D(128, kernel_size=(3, 3, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
+		x = Dropout(0.25)(x)
 
 		x = Convolution3D(128, kernel_size=(2, 2, 1), padding='valid')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
-		# x = Dropout(0.25)(x)
+		x = Dropout(0.25)(x)
 
-		x = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 2, 4, 3)))(x)
-		x = Reshape((-1, video_shape[2]))(x)
+		Squeeze = Lambda(lambda a: tf.squeeze(a, axis=1))
 
-		x = Lambda(lambda a: tf.concatenate([tf.repeat(a[:,:,0], 4), tf.repeat(a[:,:,1], 4), tf.repeat(a[:,:,2], 4),
-											 tf.repeat(a[:,:,3], 4), tf.repeat(a[:,:,4], 4)], axis=1))(x)
-		x = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(x)
+		x = Squeeze(Squeeze(x))
+
+		x = UpSampling1D(4)(x)
+
+		x = Permute((2, 1))(x)
 
 		model = Model(inputs=video_input, outputs=x)
 		print 'Video Encoder'
@@ -204,9 +204,9 @@ class SpeechEnhancementNetwork(object):
 
 		shared_embeding = encoder([input_spec, input_frames])
 
-		shared_embeding = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(shared_embeding)
+		shared_embeding = Permute((2, 1))(shared_embeding)
 		coarse_output_spec = attention(shared_embeding)
-		coarse_output_spec = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(coarse_output_spec)
+		coarse_output_spec = Permute((2, 1))(coarse_output_spec)
 		coarse_output_spec = Lambda(lambda a: tf.expand_dims(a, axis=-1))(coarse_output_spec)
 		fine_output_spec = decoder(coarse_output_spec)
 		fine_output_spec = Lambda(lambda a: tf.squeeze(a, axis=-1))(fine_output_spec)
