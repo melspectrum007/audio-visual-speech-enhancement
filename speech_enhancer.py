@@ -68,14 +68,28 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 
 
 def train(args):
+	print 'loading train data...'
 	train_video_samples, train_mixed_spectrograms, train_source_spectrograms = load_preprocessed_samples(
 		args.train_preprocessed_blob_paths, max_samples=None
 	)[:3]
 
+	height, width, frames = train_video_samples.shape[2:]
+	freq, bins = train_mixed_spectrograms.shape[2:]
+
+	train_video_samples = train_video_samples.reshape(-1, height, width, frames)
+	train_mixed_spectrograms = train_mixed_spectrograms.reshape(-1, freq, bins)
+	train_source_spectrograms = train_source_spectrograms.reshape(-1, freq, bins)
+
+	print 'loading validation data...'
 	validation_video_samples, validation_mixed_spectrograms, validation_source_spectrograms = load_preprocessed_samples(
 		args.validation_preprocessed_blob_paths, max_samples=None
 	)[:3]
 
+	validation_video_samples = validation_video_samples.reshape(-1, height, width, frames)
+	validation_mixed_spectrograms = validation_mixed_spectrograms.reshape(-1, freq, bins)
+	validation_source_spectrograms = validation_source_spectrograms.reshape(-1, freq, bins)
+
+	print 'normalizing video samples...'
 	video_normalizer = dp.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(validation_video_samples)
@@ -83,6 +97,7 @@ def train(args):
 	with open(args.normalization_cache, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
+	print 'building network...'
 	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
 	network.train(
 		train_mixed_spectrograms, train_video_samples, train_source_spectrograms,
@@ -171,6 +186,51 @@ def test(args):
 			np.save(os.path.split(input_path)[0] + '/mixed.npy', mixed_spec)
 			np.save(os.path.split(input_path)[0] + '/enhanced.npy', enhanced_spec)
 
+
+def generate_vocoder_dataset(args):
+
+	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
+	normalization_path = args.model_cache_dir + '/normalization.pkl'
+	with open(normalization_path, 'rb') as normalization_fd:
+		video_normalizer = pickle.load(normalization_fd)
+
+	dataProcessor = utils.DataProcessor(args.fps, args.sr)
+
+	train_video_samples, train_mixed_spectrograms, train_source_spectrograms, train_source_phases = load_preprocessed_samples(
+		args.train_preprocessed_blob_paths, max_samples=None
+	)
+
+	vocoder_train_enhanced_spectrograms = []
+	vocoder_train_source_waveforms = []
+	for i in range(train_video_samples.shape[0]):
+		video_samples = video_normalizer.normalize(train_video_samples[i])
+		mixed_spectrograms = train_mixed_spectrograms[i]
+
+		enhanced_spectrograms = network.predict(mixed_spectrograms, video_samples)
+		enhanced_spectrogram = np.concatenate(list(enhanced_spectrograms), axis=1)
+
+		source_spectrograms = train_source_spectrograms[i]
+		source_phase = train_source_phases[i]
+
+		source_spectrogram = np.concatenate(list(source_spectrograms), axis=1)
+		source_spectrogram = dataProcessor.recover_linear_spectrogram(source_spectrogram)
+
+		waveform = dataProcessor.reconstruct_waveform_data(source_spectrogram, source_phase)
+
+		vocoder_train_enhanced_spectrograms.append(enhanced_spectrogram)
+		vocoder_train_source_waveforms.append(waveform)
+
+	vocoder_train_enhanced_spectrograms = np.stack(vocoder_train_enhanced_spectrograms)
+	vocoder_train_source_waveforms = np.stack(vocoder_train_source_waveforms)
+
+	np.savez(
+		args.vocoder_train_blob_path,
+		enhanced_spectrograms=vocoder_train_enhanced_spectrograms,
+		source_waveforms=vocoder_train_source_waveforms,
+	)
+
+
+
 class PredictionStorage(object):
 
 	def __init__(self, storage_dir):
@@ -257,6 +317,14 @@ def main():
 	preprocess_parser.add_argument('--speakers', nargs='+', type=str)
 	preprocess_parser.add_argument('--ignored_speakers', nargs='+', type=str)
 	preprocess_parser.set_defaults(func=preprocess)
+
+	generate_parser = action_parsers.add_parser('generate_vocoder_dataset')
+	generate_parser.add_argument('--train_preprocessed_blob_path', type=str, required=True)
+	generate_parser.add_argument('--vocoder_train_blob_path', type=str, required=True)
+	generate_parser.add_argument('--model_cache_dir', type=str, required=True)
+	generate_parser.add_argument('--fps', type=str, default=25)
+	generate_parser.add_argument('--sr', type=str, default=16000)
+	generate_parser.set_defaults(func=generate_vocoder_dataset)
 
 	train_parser = action_parsers.add_parser('train')
 	train_parser.add_argument('--train_preprocessed_blob_paths', nargs='+', type=str, required=True)

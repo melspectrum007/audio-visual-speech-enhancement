@@ -119,12 +119,9 @@ class DataProcessor(object):
 		spectrogram = spectrogram[:, :n_frames]
 		phase = phase[:, :n_frames]
 
-		if self.db:
-			spectrogram = lb.db_to_amplitude(spectrogram)
+		spectrogram = self.recover_linear_spectrogram(spectrogram)
 
-		if self.mel:
-			spectrogram = np.dot(self.invers_mel_filters, spectrogram)
-		else:
+		if not self.mel:
 			phase = phase[:-1, :]
 
 		if use_griffin_lim:
@@ -136,6 +133,18 @@ class DataProcessor(object):
 		# data += self.mean
 		data = data.astype('int16')
 		return AudioSignal(data, mixed_signal.get_sample_rate())
+
+	def recover_linear_spectrogram(self, spectrogram):
+		if self.db:
+			spectrogram = lb.db_to_amplitude(spectrogram)
+
+		if self.mel:
+			spectrogram = np.dot(self.invers_mel_filters, spectrogram)
+
+		return spectrogram
+
+	def reconstruct_waveform_data(self, spectrogram, phase):
+		return lb.istft(spectrogram * phase, self.hop)
 
 def get_frames(video_path):
 	with VideoFileReader(video_path) as reader:
