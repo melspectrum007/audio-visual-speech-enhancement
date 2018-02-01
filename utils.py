@@ -1,16 +1,16 @@
 import numpy as np
 import librosa as lb
-import os, subprocess, multiprocess, traceback, sys
+import os, subprocess, multiprocess
 
 from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
 from facedetection.face_detection import FaceDetector
-from dsp.spectrogram import MelConverter
 
 MOUTH_WIDTH = 128
 MOUTH_HEIGHT = 128
 BINS_PER_FRAME = 4
 SAMPLE_RATE = 16000
+NUM_MEL_FILTERS = 80
 GRIF_LIM_ITERS = 100
 
 class DataProcessor(object):
@@ -29,6 +29,9 @@ class DataProcessor(object):
 		self.n_slices = None
 		self.mean = None
 		self.std = None
+		if self.mel:
+			self.mel_filters = lb.filters.mel(self.audio_sr, self.nfft_single_frame, NUM_MEL_FILTERS, fmin=0, fmax=8000)
+			self.invers_mel_filters = np.linalg.pinv(self.mel_filters)
 
 	def preprocess_video(self, frames):
 		self.n_slices = frames.shape[0] / self.num_output_frames
@@ -60,8 +63,7 @@ class DataProcessor(object):
 		mag, phase = lb.magphase(lb.stft(audio_data, self.nfft_single_frame, self.hop))
 
 		if self.mel:
-			mel = MelConverter(self.audio_sr, self.nfft_single_frame, self.hop, 80, 0, 8000)
-			mag = np.dot(mel._MEL_FILTER, mag)
+			mag = np.dot(self.mel_filters, mag)
 
 		if self.db:
 			mag = lb.amplitude_to_db(mag)
@@ -117,8 +119,7 @@ class DataProcessor(object):
 		if self.db:
 			spectrogram = lb.db_to_amplitude(spectrogram)
 		if self.mel:
-			mel = MelConverter(self.audio_sr, self.nfft_single_frame, self.hop, 80, 0, 8000)
-			spectrogram = np.dot(np.linalg.pinv(mel._MEL_FILTER), spectrogram)
+			spectrogram = np.dot(self.invers_mel_filters, spectrogram)
 		else:
 			phase = phase[:-1, :]
 
