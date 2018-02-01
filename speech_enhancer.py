@@ -14,26 +14,29 @@ from mediaio.audio_io import AudioSignal
 def preprocess(args):
 	speaker_ids = list_speakers(args)
 
-	video_file_paths, speech_file_paths, noise_file_paths = list_data(
+	video_file_paths, source_file_paths, noise_file_paths = list_data(
 		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1500
 	)
 
-	video_samples, mixed_spectrograms, speech_spectrograms = utils.preprocess_data(
-		video_file_paths, speech_file_paths, noise_file_paths
+	video_samples, mixed_spectrograms, source_spectrograms, source_phases = utils.preprocess_data(
+		video_file_paths, source_file_paths, noise_file_paths
 	)
 
 	np.savez(
 		args.preprocessed_blob_path,
 		video_samples=video_samples,
 		mixed_spectrograms=mixed_spectrograms,
-		speech_spectrograms=speech_spectrograms,
+		source_spectrograms=source_spectrograms,
+		source_phases=source_phases,
+
 	)
 
 
 def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 	all_video_samples = []
 	all_mixed_spectrograms = []
-	all_speech_spectrograms = []
+	all_source_spectrograms = []
+	all_source_phases = []
 
 	for preprocessed_blob_path in preprocessed_blob_paths:
 		print('loading preprocessed samples from %s' % preprocessed_blob_path)
@@ -41,32 +44,37 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 		with np.load(preprocessed_blob_path) as data:
 			all_video_samples.append(data['video_samples'][:max_samples])
 			all_mixed_spectrograms.append(data['mixed_spectrograms'][:max_samples])
-			all_speech_spectrograms.append(data['speech_spectrograms'][:max_samples])
+			all_source_spectrograms.append(data['source_spectrograms'][:max_samples])
+			all_source_phases.append(data['source_phases'][:max_samples])
 
 	video_samples = np.concatenate(all_video_samples, axis=0)
 	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
-	speech_spectrograms = np.concatenate(all_speech_spectrograms, axis=0)
+	source_spectrograms = np.concatenate(all_source_spectrograms, axis=0)
+	source_phases = np.concatenate(all_source_phases, axis=0)
+
 
 	permutation = np.random.permutation(video_samples.shape[0])
 	video_samples = video_samples[permutation]
 	mixed_spectrograms = mixed_spectrograms[permutation]
-	speech_spectrograms = speech_spectrograms[permutation]
+	source_spectrograms = source_spectrograms[permutation]
+	source_phases = source_phases[permutation]
 
 	return (
 		video_samples,
 		mixed_spectrograms,
-		speech_spectrograms,
+		source_spectrograms,
+		source_phases,
 	)
 
 
 def train(args):
-	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms = load_preprocessed_samples(
+	train_video_samples, train_mixed_spectrograms, train_source_spectrograms = load_preprocessed_samples(
 		args.train_preprocessed_blob_paths, max_samples=None
-	)
+	)[:3]
 
-	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms = load_preprocessed_samples(
+	validation_video_samples, validation_mixed_spectrograms, validation_source_spectrograms = load_preprocessed_samples(
 		args.validation_preprocessed_blob_paths, max_samples=None
-	)
+	)[:3]
 
 	video_normalizer = dp.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
@@ -77,8 +85,8 @@ def train(args):
 
 	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
 	network.train(
-		train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
-		validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
+		train_mixed_spectrograms, train_video_samples, train_source_spectrograms,
+		validation_mixed_spectrograms, validation_video_samples, validation_source_spectrograms,
 		args.model_cache_dir, args.tensorboard_dir
 	)
 

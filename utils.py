@@ -8,7 +8,7 @@ from facedetection.face_detection import FaceDetector
 
 MOUTH_WIDTH = 128
 MOUTH_HEIGHT = 128
-BINS_PER_FRAME = 4
+AUDIO_BINS_PER_FRAME = 4
 SAMPLE_RATE = 16000
 NUM_MEL_FILTERS = 80
 GRIF_LIM_ITERS = 100
@@ -25,7 +25,7 @@ class DataProcessor(object):
 		self.mel = mel
 		self.db = db
 		self.nfft_single_frame = int(self.audio_sr / self.video_fps)
-		self.hop = int(self.nfft_single_frame / BINS_PER_FRAME)
+		self.hop = int(self.nfft_single_frame / AUDIO_BINS_PER_FRAME)
 		self.n_slices = None
 		self.mean = None
 		self.std = None
@@ -49,8 +49,8 @@ class DataProcessor(object):
 		return np.stack(slices)
 
 	def slice_input_spectrogram(self, spectrogram):
-		input_bins_per_slice = self.num_input_frames * BINS_PER_FRAME
-		output_bins_per_slice = self.num_output_frames * BINS_PER_FRAME
+		input_bins_per_slice = self.num_input_frames * AUDIO_BINS_PER_FRAME
+		output_bins_per_slice = self.num_output_frames * AUDIO_BINS_PER_FRAME
 
 		pad = (input_bins_per_slice - output_bins_per_slice) / 2
 		val = -10 if self.db else 0
@@ -85,9 +85,9 @@ class DataProcessor(object):
 
 	def preprocess_label(self, source):
 		# source.normalize(self.mean, self.std)
-		label_spectrogram = self.get_mag_phase(source.get_data())[0]
-		slice_size = self.num_output_frames * BINS_PER_FRAME
-		return slice_spectrogram(label_spectrogram, slice_size, slice_size)
+		label_spectrogram, label_phase = self.get_mag_phase(source.get_data())
+		slice_size = self.num_output_frames * AUDIO_BINS_PER_FRAME
+		return slice_spectrogram(label_spectrogram, slice_size, slice_size), label_phase
 
 	def preprocess_sample(self, video_file_path, source_file_path, noise_file_path):
 		print ('preprocessing %s, %s' % (source_file_path, noise_file_path))
@@ -96,11 +96,14 @@ class DataProcessor(object):
 		source_signal = AudioSignal.from_wav_file(source_file_path)
 
 		video_samples, mixed_spectrograms = self.preprocess_inputs(frames, mixed_signal)
-		label_spectrograms = self.preprocess_label(source_signal)
+		label_spectrograms, label_phase = self.preprocess_label(source_signal)
 
-		min_num = min(video_samples.shape[0], mixed_spectrograms.shape[0])
+		min_num_slices = min(video_samples.shape[0], mixed_spectrograms.shape[0])
 
-		return video_samples[:min_num], mixed_spectrograms[:min_num], label_spectrograms[:min_num]
+		return video_samples[:min_num_slices], \
+			   mixed_spectrograms[:min_num_slices], \
+			   label_spectrograms[:min_num_slices], \
+			   label_phase[:, :min_num_slices * self.num_output_frames * AUDIO_BINS_PER_FRAME]
 
 	def try_preprocess_sample(self, sample):
 		try:
@@ -118,6 +121,7 @@ class DataProcessor(object):
 
 		if self.db:
 			spectrogram = lb.db_to_amplitude(spectrogram)
+
 		if self.mel:
 			spectrogram = np.dot(self.invers_mel_filters, spectrogram)
 		else:
@@ -188,12 +192,13 @@ def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 	preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
 	preprocessed = [p for p in preprocessed if p is not None]
 
-	video_samples, mixed_spectrograms, source_spectrogarms = zip(*preprocessed)
+	video_samples, mixed_spectrograms, source_spectrogarms, source_phases = zip(*preprocessed)
 
 	return (
-		np.concatenate(video_samples),
-		np.concatenate(mixed_spectrograms),
-		np.concatenate(source_spectrogarms)
+		np.stack(video_samples),
+		np.stack(mixed_spectrograms),
+		np.stack(source_spectrogarms),
+		np.stack(source_phases)
 	)
 
 def griffin_lim(magnitude, n_fft, hop_length, n_iterations, initial_phase=None):
