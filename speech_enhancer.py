@@ -1,3 +1,5 @@
+#!/usr/bin/python
+import os
 import argparse, os, logging, pickle
 import numpy as np
 import utils
@@ -15,7 +17,7 @@ BASE_FOLDER = '/cs/labs/peleg/asaph/playground/audio-visual-speech-enhancement' 
 
 def preprocess(args):
 	dataset_path = os.path.join(args.base_folder, args.dataset)
-	preprocessed_blob_path = os.path.join(args.base_folder, '/cache/preprocessed/', args.data_name)
+	preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.data_name)
 
 	speaker_ids = list_speakers(args)
 
@@ -73,10 +75,10 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 
 
 def train(args):
-	model_cache_dir = os.path.join(args.base_folder + '/cache/models' + args.model)
+	model_cache_dir = os.path.join(args.base_folder + 'cache/models' + args.model)
 	normalization_cache_path = os.path.join(model_cache_dir + 'normalization.pkl')
-	train_preprocessed_blob_paths = [os.path.join(args.base_folder + '/cache/preprocessed' + p + '.npz') for p in args.train_data_names]
-	val_preprocessed_blob_paths = [os.path.join(args.base_folder + '/cache/preprocessed' + p + '.npz') for p in args.val_data_names]
+	train_preprocessed_blob_paths = [os.path.join(args.base_folder + 'cache/preprocessed' + p + '.npz') for p in args.train_data_names]
+	val_preprocessed_blob_paths = [os.path.join(args.base_folder + 'cache/preprocessed' + p + '.npz') for p in args.val_data_names]
 
 	if not os.path.exists(model_cache_dir):
 		os.mkdir(model_cache_dir)
@@ -120,10 +122,12 @@ def train(args):
 
 
 def predict(args):
-	model_cache_dir = os.path.join(args.base_folder, '/cache/models', args.model)
-	prediction_output_dir = os.path.join(args.base_folder, '/out', args.model)
+	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
+	prediction_output_dir = os.path.join(args.base_folder, 'out', args.model)
 	normalization_cache = os.path.join(model_cache_dir, 'normalization.pkl')
-	dataset_path = os.path.join(args.base_folder, '/data', args.dataset, 'test')
+	dataset_path = os.path.join(args.base_folder, 'data', args.dataset, 'test')
+	if not os.path.exists(prediction_output_dir):
+		os.mkdir(prediction_output_dir)
 
 	storage = PredictionStorage(prediction_output_dir)
 	network = SpeechEnhancementNetwork.load(model_cache_dir)
@@ -147,7 +151,7 @@ def predict(args):
 				print('predicting (%s, %s)...' % (video_file_path, noise_file_path))
 				mixed_signal = utils.mix_source_noise(speech_file_path, noise_file_path)
 				video_samples, mixed_spectrograms, label_spectrograms = data_processor.preprocess_sample(
-					video_file_path, speech_file_path, noise_file_path)
+					video_file_path, speech_file_path, noise_file_path)[:3]
 
 				video_normalizer.normalize(video_samples)
 
@@ -174,7 +178,7 @@ def predict(args):
 
 def test(args):
 	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
-	normalization_path = os.path.join(args.model_cache_dir, '/normalization.pkl')
+	normalization_path = os.path.join(model_cache_dir, 'normalization.pkl')
 
 	network = SpeechEnhancementNetwork.load(model_cache_dir)
 	with open(normalization_path, 'rb') as normalization_fd:
@@ -208,24 +212,25 @@ def test(args):
 
 def generate_vocoder_dataset(args):
 	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
-	normalization_path = os.path.join(args.model_cache_dir, '/normalization.pkl')
-	train_preprocessed_blob_paths = os.path.join(args.base_folder, 'cache/preprocessed', args.train_data_names)
-	vocoder_train_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.train_data_names + '-vocoder-' + args.model)
+	normalization_path = os.path.join(model_cache_dir, 'normalization.pkl')
+	train_preprocessed_blob_paths = os.path.join(args.base_folder, 'cache/preprocessed', args.train_data_name + '.npz')
+	vocoder_train_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.train_data_name + '-vocoder-' + args.model + '.npz')
 
 	network = SpeechEnhancementNetwork.load(model_cache_dir)
 	with open(normalization_path, 'rb') as normalization_fd:
 		video_normalizer = pickle.load(normalization_fd)
 
-	dataProcessor = utils.DataProcessor(args.fps, args.sr)
+	dataProcessor = utils.DataProcessor(args.frames_per_second, args.sampling_rate)
 
 	train_video_samples, train_mixed_spectrograms, train_source_spectrograms, train_source_phases = load_preprocessed_samples(
-		train_preprocessed_blob_paths, max_samples=None
+		[train_preprocessed_blob_paths], max_samples=None
 	)
 
 	vocoder_train_enhanced_spectrograms = []
 	vocoder_train_source_waveforms = []
 	for i in range(train_video_samples.shape[0]):
-		video_samples = video_normalizer.normalize(train_video_samples[i])
+		video_samples = train_video_samples[i]
+		video_normalizer.normalize(video_samples)
 		mixed_spectrograms = train_mixed_spectrograms[i]
 
 		enhanced_spectrograms = network.predict(mixed_spectrograms, video_samples)
@@ -341,11 +346,11 @@ def main():
 	preprocess_parser.add_argument('-s', '--speakers', nargs='+', type=str)
 	preprocess_parser.add_argument('-is', '--ignored_speakers', nargs='+', type=str)
 	preprocess_parser.add_argument('-n', '--noise_dirs', nargs='+', type=str, required=True)
-	preprocess_parser.set_defaults(func=preprocess)
+	preprocess_parser.set_defaults(func=preprocess, which='preprocess')
 
 	generate_parser = action_parsers.add_parser('generate_vocoder_dataset')
-	generate_parser.add_argument('-tdn', '--train_data_names', type=str, required=True)
-	generate_parser.add_argument('mn', '--model', type=str, required=True)
+	generate_parser.add_argument('-tdn', '--train_data_name', type=str, required=True)
+	generate_parser.add_argument('-mn', '--model', type=str, required=True)
 	generate_parser.add_argument('-fps', '--frames_per_second', type=int, default=25)
 	generate_parser.add_argument('-sr', '--sampling_rate', type=int, default=16000)
 	generate_parser.set_defaults(func=generate_vocoder_dataset)
@@ -360,14 +365,14 @@ def main():
 	predict_parser.add_argument('-mn', '--model', type=str, required=True)
 	predict_parser.add_argument('-ds', '--dataset', type=str, required=True)
 	predict_parser.add_argument('-s', '--speakers', nargs='+', type=str, required=True)
-	predict_parser.add_argument('-is', '--ignored_speakers', nargs='+', type=str, required=True)
+	predict_parser.add_argument('-is', '--ignored_speakers', nargs='+', type=str)
 	predict_parser.add_argument('-n', '--noise_dirs', nargs='+', type=str, required=True)
 	predict_parser.set_defaults(func=predict)
 
 	test_parser = action_parsers.add_parser('test')
 	test_parser.add_argument('-mn', '--model', type=str, required=True)
 	test_parser.add_argument('-p', '--paths', type=str, nargs='+', required=True)
-	test_parser.set_defaults(func=test)
+	test_parser.set_defaults(func=test, which='test')
 
 	args = parser.parse_args()
 	args.func(args)
