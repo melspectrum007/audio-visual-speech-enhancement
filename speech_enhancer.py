@@ -1,5 +1,4 @@
-#!/usr/bin/python
-import os
+
 import argparse, os, logging, pickle
 import numpy as np
 import utils
@@ -16,8 +15,15 @@ from mediaio.audio_io import AudioSignal
 BASE_FOLDER = '/cs/labs/peleg/asaph/playground/audio-visual-speech-enhancement' # todo: remove before releasing code
 
 def preprocess(args):
-	dataset_path = os.path.join(args.base_folder, args.dataset)
-	preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.data_name)
+	dataset_path = os.path.join(args.base_folder, 'data', args.dataset)
+	cache_dir = os.path.join(args.base_folder, 'cache')
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	preprocessed_dir = os.path.join(cache_dir, 'preprocessed')
+	if not os.path.exists(preprocessed_dir):
+		os.mkdir(preprocessed_dir)
+
+	preprocessed_blob_path = os.path.join(preprocessed_dir, args.data_name + '.npz')
 
 	speaker_ids = list_speakers(args)
 
@@ -75,13 +81,19 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 
 
 def train(args):
-	model_cache_dir = os.path.join(args.base_folder + 'cache/models' + args.model)
+	cache_dir = os.path.join(args.base_folder, 'cache')
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	models_dir = os.path.join(cache_dir, 'models')
+	if not os.path.exists(models_dir):
+		os.mkdir(models_dir)
+	model_cache_dir = os.path.join(models_dir, args.model_name)
+	if not os.path.exists(model_cache_dir):
+		os.mkdir(model_cache_dir)
+
 	normalization_cache_path = os.path.join(model_cache_dir + 'normalization.pkl')
 	train_preprocessed_blob_paths = [os.path.join(args.base_folder + 'cache/preprocessed' + p + '.npz') for p in args.train_data_names]
 	val_preprocessed_blob_paths = [os.path.join(args.base_folder + 'cache/preprocessed' + p + '.npz') for p in args.val_data_names]
-
-	if not os.path.exists(model_cache_dir):
-		os.mkdir(model_cache_dir)
 
 	train_video_samples, train_mixed_spectrograms, train_source_spectrograms = load_preprocessed_samples(
 		train_preprocessed_blob_paths, max_samples=None
