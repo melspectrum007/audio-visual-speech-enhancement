@@ -222,7 +222,7 @@ class SpeechEnhancementNetwork(object):
 
 	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
 			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms,
-			  model_cache_dir, tensorboard_dir=None):
+			  model_cache_dir):
 
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_video_samples = np.expand_dims(train_video_samples, -1)  # append channels axis

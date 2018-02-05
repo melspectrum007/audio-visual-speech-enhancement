@@ -87,13 +87,13 @@ def train(args):
 	models_dir = os.path.join(cache_dir, 'models')
 	if not os.path.exists(models_dir):
 		os.mkdir(models_dir)
-	model_cache_dir = os.path.join(models_dir, args.model_name)
+	model_cache_dir = os.path.join(models_dir, args.model)
 	if not os.path.exists(model_cache_dir):
 		os.mkdir(model_cache_dir)
 
 	normalization_cache_path = os.path.join(model_cache_dir + 'normalization.pkl')
-	train_preprocessed_blob_paths = [os.path.join(args.base_folder + 'cache/preprocessed' + p + '.npz') for p in args.train_data_names]
-	val_preprocessed_blob_paths = [os.path.join(args.base_folder + 'cache/preprocessed' + p + '.npz') for p in args.val_data_names]
+	train_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.train_data_names]
+	val_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.val_data_names]
 
 	train_video_samples, train_mixed_spectrograms, train_source_spectrograms = load_preprocessed_samples(
 		train_preprocessed_blob_paths, max_samples=None
@@ -127,7 +127,7 @@ def train(args):
 	network.train(
 		train_mixed_spectrograms, train_video_samples, train_source_spectrograms,
 		val_mixed_spectrograms, val_video_samples, val_source_spectrograms,
-		args.model_cache_dir, args.tensorboard_dir
+		model_cache_dir
 	)
 
 	network.save(args.model_cache_dir)
