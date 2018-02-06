@@ -6,6 +6,7 @@ import data_processor as dp
 
 from dataset import AudioVisualDataset, AudioDataset
 from network import SpeechEnhancementNetwork
+from wavenet_vocoder import WavenetVocoder
 from shutil import copy2
 from mediaio import ffmpeg
 from datetime import datetime
@@ -41,7 +42,6 @@ def preprocess(args):
 		mixed_spectrograms=mixed_spectrograms,
 		source_spectrograms=source_spectrograms,
 		source_phases=source_phases,
-
 	)
 
 
@@ -269,6 +269,63 @@ def generate_vocoder_dataset(args):
 	)
 
 
+def train_vocoder(args):
+	cache_dir = os.path.join(args.base_folder, 'cache')
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	models_dir = os.path.join(cache_dir, 'models')
+	if not os.path.exists(models_dir):
+		os.mkdir(models_dir)
+	model_cache_dir = os.path.join(models_dir, args.model)
+	if not os.path.exists(model_cache_dir):
+		os.mkdir(model_cache_dir)
+
+	train_preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.train_data_name + '.npz')
+	val_preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.val_data_name + '.npz')
+
+	with np.load(train_preprocessed_blob_path) as data:
+		OVERFIT_NUM = 15 # todo: remove
+		train_enhanced_spectrograms = data['enhanced_spectrograms'][:OVERFIT_NUM]
+		train_waveforms = data['source_waveforms'][:OVERFIT_NUM]
+
+	with np.load(val_preprocessed_blob_path) as data:
+		val_enhanced_spectrograms = data['enhanced_spectrograms']
+		val_waveforms = data['source_waveforms']
+
+	val_enhanced_spectrograms = train_enhanced_spectrograms
+	val_waveforms = train_waveforms
+
+	print 'building network...'
+	network = WavenetVocoder(80, 15, (train_enhanced_spectrograms.shape[1:]))
+	network.train(train_enhanced_spectrograms, train_waveforms, val_enhanced_spectrograms, val_waveforms, model_cache_dir)
+
+
+def predict_vocoder(args):
+	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
+	prediction_output_dir = os.path.join(args.base_folder, 'out', args.model)
+	testset_path = os.path.join(args.base_folder, 'cache/preprocessed', args.data_name + '.npz')
+	if not os.path.exists(prediction_output_dir):
+		os.mkdir(prediction_output_dir)
+
+	storage = PredictionStorage(prediction_output_dir)
+	network = WavenetVocoder.load(model_cache_dir)
+
+	with np.load(testset_path) as data:
+		OVERFIT_NUM = 15 # todo: remove
+		enhanced_spectrogarms = data['enhanced_spectrograms'][:OVERFIT_NUM]
+		source_waveforms = data['source_waveforms'][:OVERFIT_NUM]
+
+	for i in range(enhanced_spectrogarms.shape[0]):
+		wave_data = network.predict_one_sample(enhanced_spectrogarms[i][np.newaxis, ...])
+		enhanced_signal = AudioSignal(wave_data, 16000)
+		source_signal = AudioSignal(source_waveforms[i], 16000)
+
+		enhanced_signal.set_sample_type('int16')
+		source_signal.set_sample_type('int16')
+
+		storage.save_vocoder_pred(enhanced_signal, source_signal, i)
+
+
 class PredictionStorage(object):
 
 	def __init__(self, storage_dir):
@@ -313,6 +370,13 @@ class PredictionStorage(object):
 		# os.unlink(enhanced_speech_audio_path)
 
 		return sample_prediction_dir
+
+	def save_vocoder_pred(self, enhanced_signal, source_signal, num):
+		enhanced_path = os.path.join(self.__base_dir, 'enhanced_' + str(num) + '.wav')
+		source_path = os.path.join(self.__base_dir, 'source_' + str(num) + '.wav')
+		enhanced_signal.save_to_wav_file(enhanced_path)
+		source_signal.save_to_wav_file(source_path)
+
 
 	def save_spectrograms(self, spectrograms, names, dir_path):
 		for i, spec in enumerate(spectrograms):
@@ -373,6 +437,12 @@ def main():
 	train_parser.add_argument('-vdn', '--val_data_names', nargs='+', type=str, required=True)
 	train_parser.set_defaults(func=train)
 
+	train_vocoder_parser = action_parsers.add_parser('train_vocoder')
+	train_vocoder_parser.add_argument('-mn', '--model', type=str, required=True)
+	train_vocoder_parser.add_argument('-tdn', '--train_data_name', type=str, required=True)
+	train_vocoder_parser.add_argument('-vdn', '--val_data_name', type=str, required=True)
+	train_vocoder_parser.set_defaults(func=train_vocoder)
+
 	predict_parser = action_parsers.add_parser('predict')
 	predict_parser.add_argument('-mn', '--model', type=str, required=True)
 	predict_parser.add_argument('-ds', '--dataset', type=str, required=True)
@@ -380,6 +450,11 @@ def main():
 	predict_parser.add_argument('-is', '--ignored_speakers', nargs='+', type=str)
 	predict_parser.add_argument('-n', '--noise_dirs', nargs='+', type=str, required=True)
 	predict_parser.set_defaults(func=predict)
+
+	predict_vocoder_parser = action_parsers.add_parser('predict_vocoder')
+	predict_vocoder_parser.add_argument('-mn', '--model', type=str, required=True)
+	predict_vocoder_parser.add_argument('-dn', '--data_name', type=str, required=True)
+	predict_vocoder_parser.set_defaults(func=predict_vocoder)
 
 	test_parser = action_parsers.add_parser('test')
 	test_parser.add_argument('-mn', '--model', type=str, required=True)
