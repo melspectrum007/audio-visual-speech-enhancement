@@ -1,9 +1,8 @@
 import os
 
 from keras import optimizers
-from keras.layers import Input, Dense, Convolution2D, MaxPooling3D, Deconvolution2D, Convolution3D, LSTM, Bidirectional
-from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape, Activation, Lambda
-from keras.layers.merge import concatenate, Multiply, Subtract, Add
+from keras.layers import *
+
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
 
@@ -65,7 +64,7 @@ class SpeechEnhancementNetwork(object):
 
 		T = extended_audio_spectrogram_shape[1]
 
-		x = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 3, 2)))(x)
+		x = Permute((1, 3, 2))(x)
 		x = Reshape((-1, T))(x)
 
 		model = Model(inputs=[audio_input], outputs=[x])
@@ -119,11 +118,13 @@ class SpeechEnhancementNetwork(object):
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		x = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 2, 4, 3)))(x)
-		x = Reshape((-1, video_shape[2]))(x)
+		Squeeze = Lambda(lambda a: tf.squeeze(a, axis=1))
 
-		x = Lambda(lambda a: tf.concatenate([tf.repeat(a[:,:,i], 4) for i in range(NUM_FRAMES / 4)], axis=1))(x)
-		x = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))(x)
+		x = Squeeze(Squeeze(x))
+
+		x = UpSampling1D(4)(x)
+
+		x = Permute((2, 1))(x)
 
 		model = Model(inputs=video_input, outputs=x)
 		print 'Video Encoder'
@@ -195,7 +196,6 @@ class SpeechEnhancementNetwork(object):
 		attention = cls.__build_attention((NUM_FRAMES, 896), 1024)
 		# decoder = cls.__build_decoder((640, 44))
 
-		Permute_axis = Lambda(lambda a: tf.permute_dimensions(a, (0, 2, 1)))
 		Db2amp = Lambda(lambda x: ((tf.exp(tf.abs(x)) - 1) * tf.sign(x)))
 		Real = Lambda(lambda x: x[:,:,:,0])
 		Imag = Lambda(lambda x: x[:,:,:,1])
@@ -205,12 +205,12 @@ class SpeechEnhancementNetwork(object):
 		video_input = Input(shape=video_shape)
 
 		shared_embeding = encoder([audio_input, video_input])
-		shared_embeding = Permute_axis(shared_embeding)
+		shared_embeding = Permute((2, 1))(shared_embeding)
 
 		mask = attention(shared_embeding)
-		mask = Permute_axis(mask)
+		mask = Permute((2, 1))(mask)
 		mask = Reshape([320, 2, NUM_FRAMES])(mask)
-		mask = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 3, 2)))(mask)
+		mask = Permute((1, 3, 2))(mask)
 
 		# mask = decoder(mask)
 
@@ -237,7 +237,7 @@ class SpeechEnhancementNetwork(object):
 
 	def train(self, train_mixed, train_video_samples, train_label,
 			  validation_mixed, validation_video_samples, validation_label,
-			  model_cache_dir, tensorboard_dir=None):
+			  model_cache_dir):
 		train_video_samples = np.expand_dims(train_video_samples, -1)
 		validation_video_samples = np.expand_dims(validation_video_samples, -1)
 

@@ -107,7 +107,7 @@ class DataProcessor(object):
 			traceback.print_exc()
 			return None
 
-	def reconstruct_signal(self, stft, mixed_signal):
+	def reconstruct_signal(self, stft, sr):
 		real = stft[:,:,0]
 		imag = stft[:,:,1]
 		# if self.db:
@@ -119,7 +119,7 @@ class DataProcessor(object):
 		data *= self.std
 		data += self.mean
 		data = data.astype('int16')
-		return AudioSignal(data, mixed_signal.get_sample_rate())
+		return AudioSignal(data, sr)
 
 def get_frames(video_path):
 	with VideoFileReader(video_path) as reader:

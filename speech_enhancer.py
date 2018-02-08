@@ -12,11 +12,23 @@ from datetime import datetime
 from mediaio.video_io import VideoFileReader
 from mediaio.audio_io import AudioSignal
 
+BASE_FOLDER = '/cs/labs/peleg/asaph/playground/audio-visual-speech-enhancement' # todo: remove before releasing code
+
 def preprocess(args):
+	dataset_path = os.path.join(args.base_folder, 'data', args.dataset)
+	cache_dir = os.path.join(args.base_folder, 'cache')
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	preprocessed_dir = os.path.join(cache_dir, 'preprocessed')
+	if not os.path.exists(preprocessed_dir):
+		os.mkdir(preprocessed_dir)
+
+	preprocessed_blob_path = os.path.join(preprocessed_dir, args.data_name + '.npz')
+
 	speaker_ids = list_speakers(args)
 
 	video_file_paths, speech_file_paths, noise_file_paths = list_data(
-		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1500
+		dataset_path, speaker_ids, args.noise_dirs, max_files=1500
 	)
 
 	video_samples, mixed_spectrograms, speech_spectrograms = utils.preprocess_data(
@@ -24,7 +36,7 @@ def preprocess(args):
 	)
 
 	np.savez(
-		args.preprocessed_blob_path,
+		preprocessed_blob_path,
 		video_samples=video_samples,
 		mixed_spectrograms=mixed_spectrograms,
 		speech_spectrograms=speech_spectrograms,
@@ -61,48 +73,133 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 
 
 def train(args):
+	cache_dir = os.path.join(args.base_folder, 'cache')
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	models_dir = os.path.join(cache_dir, 'models')
+	if not os.path.exists(models_dir):
+		os.mkdir(models_dir)
+	model_cache_dir = os.path.join(models_dir, args.model)
+	if not os.path.exists(model_cache_dir):
+		os.mkdir(model_cache_dir)
+
+	normalization_cache_path = os.path.join(model_cache_dir + 'normalization.pkl')
+	train_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.train_data_names]
+	val_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.val_data_names]
+
 	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms = load_preprocessed_samples(
-		args.train_preprocessed_blob_paths, max_samples=None
+		train_preprocessed_blob_paths, max_samples=None
 	)
 
 	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms = load_preprocessed_samples(
-		args.validation_preprocessed_blob_paths, max_samples=None
+		val_preprocessed_blob_paths, max_samples=None
 	)
 
-	train_mixed_spectrograms = train_mixed_spectrograms[:,:-1,:,:]
-	train_speech_spectrograms = train_speech_spectrograms[:,:-1,:,:]
-	validation_mixed_spectrograms = validation_mixed_spectrograms[:,:-1,:,:]
-	validation_speech_spectrograms = validation_speech_spectrograms[:,:-1,:,:]
+	# for overfit only:
+	train_mixed_spectrograms = train_mixed_spectrograms[:, :, :-1, :, :]
+	train_speech_spectrograms = train_speech_spectrograms[:, :, :-1, :, :]
+	validation_mixed_spectrograms = validation_mixed_spectrograms[:, :, :-1, :, :]
+	validation_speech_spectrograms = validation_speech_spectrograms[:, :, :-1, :, :]
+
+	train_mixed_spectrograms = train_mixed_spectrograms.reshape((-1,) + train_mixed_spectrograms.shape[2:])
+	train_speech_spectrograms = train_speech_spectrograms.reshape((-1,) + train_speech_spectrograms.shape[2:])
+	validation_mixed_spectrograms = validation_mixed_spectrograms.reshape((-1,) + validation_mixed_spectrograms.shape[2:])
+	validation_speech_spectrograms = validation_speech_spectrograms.reshape((-1,) + validation_speech_spectrograms.shape[2:])
+
+
+	train_video_samples = train_video_samples.reshape((-1,) + train_video_samples.shape[2:])
+	validation_video_samples = validation_video_samples.reshape((-1,) + validation_video_samples.shape[2:])
+
+	# train_mixed_spectrograms = train_mixed_spectrograms[:,:-1,:,:]
+	# train_speech_spectrograms = train_speech_spectrograms[:,:-1,:,:]
+	# validation_mixed_spectrograms = validation_mixed_spectrograms[:,:-1,:,:]
+	# validation_speech_spectrograms = validation_speech_spectrograms[:,:-1,:,:]
 
 	video_normalizer = dp.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(validation_video_samples)
 
-	with open(args.normalization_cache, 'wb') as normalization_fd:
+	with open(normalization_cache_path, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
 	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
 	network.train(
 		train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
 		validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
-		args.model_cache_dir, args.tensorboard_dir
+		model_cache_dir
 	)
 
-	network.save(args.model_cache_dir)
+	network.save(model_cache_dir)
+
+def test_on_set(args):
+	cache_dir = os.path.join(args.base_folder, 'cache')
+	prediction_output_dir = os.path.join(args.base_folder, 'out', args.model)
+	if not os.path.exists(cache_dir):
+		os.mkdir(cache_dir)
+	models_dir = os.path.join(cache_dir, 'models')
+	if not os.path.exists(models_dir):
+		os.mkdir(models_dir)
+	model_cache_dir = os.path.join(models_dir, args.model)
+	if not os.path.exists(model_cache_dir):
+		os.mkdir(model_cache_dir)
+
+	normalization_cache_path = os.path.join(model_cache_dir + 'normalization.pkl')
+	train_preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.data_name + '.npz')
+
+	test_video_samples, test_mixed_spectrograms, test_speech_spectrograms = load_preprocessed_samples(
+		[train_preprocessed_blob_path], max_samples=None
+	)
+
+	# for overfit only:
+	test_mixed_spectrograms = test_mixed_spectrograms[:, :, :-1, :, :]
+	orig_shape = test_mixed_spectrograms.shape
+
+	test_mixed_spectrograms = test_mixed_spectrograms.reshape((-1,) + test_mixed_spectrograms.shape[2:])
+
+	test_video_samples = test_video_samples.reshape((-1,) + test_video_samples.shape[2:])
+
+	video_normalizer = dp.VideoNormalizer(test_video_samples)
+	video_normalizer.normalize(test_video_samples)
+
+	with open(normalization_cache_path, 'wb') as normalization_fd:
+		pickle.dump(video_normalizer, normalization_fd)
+
+	network = SpeechEnhancementNetwork.load(model_cache_dir)
+	enhanced_stft = network.predict(test_mixed_spectrograms, test_video_samples)
+
+	enhanced_stft = enhanced_stft.reshape(orig_shape)
+
+	data_processor = utils.DataProcessor(25, 16000)
+
+	# storage = PredictionStorage(prediction_output_dir)
+	for	i in range(enhanced_stft.shape[0]):
+		enhanced = np.concatenate(list(enhanced_stft[i]), 1)
+		signal = data_processor.reconstruct_signal(enhanced, 16000)
+		mixed = data_processor.reconstruct_signal(test_mixed_spectrograms, 16000)
+		signal.save_to_wav_file(os.path.join(prediction_output_dir, 'enhanced_' + str(i) + '.wav'))
+		mixed.save_to_wav_file(os.path.join(prediction_output_dir, 'mixed_' + str(i) + '.wav'))
+
 
 
 def predict(args):
+	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
+	prediction_output_dir = os.path.join(args.base_folder, 'out', args.model)
+	normalization_cache = os.path.join(model_cache_dir, 'normalization.pkl')
+	dataset_path = os.path.join(args.base_folder, 'data', args.dataset, 'test')
+	if not os.path.exists(prediction_output_dir):
+		os.mkdir(prediction_output_dir)
+
 	storage = PredictionStorage(args.prediction_output_dir)
 	network = SpeechEnhancementNetwork.load(args.model_cache_dir)
 	network.summerize()
 
-	with open(args.normalization_cache, 'rb') as normalization_fd:
+	with open(normalization_cache, 'rb') as normalization_fd:
 		video_normalizer = pickle.load(normalization_fd)
 
 	speaker_ids = list_speakers(args)
 	for speaker_id in speaker_ids:
 		video_file_paths, speech_file_paths, noise_file_paths = list_data(
-			args.dataset_dir, [speaker_id], args.noise_dirs, max_files=5, shuffle=False
+			dataset_path, [speaker_id], args.noise_dirs, max_files=5, shuffle=False
 		)
 
 		fps = VideoFileReader(video_file_paths[0]).get_frame_rate()
@@ -145,6 +242,8 @@ def predict(args):
 
 			except Exception:
 				logging.exception('failed to predict %s. skipping' % video_file_path)
+
+
 
 
 class PredictionStorage(object):
@@ -224,33 +323,60 @@ def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True
 
 def main():
 	parser = argparse.ArgumentParser(add_help=False)
+
+	parser.add_argument('-bf', '--base_folder', type=str, default=BASE_FOLDER)
+
 	action_parsers = parser.add_subparsers()
 
 	preprocess_parser = action_parsers.add_parser('preprocess')
-	preprocess_parser.add_argument('--dataset_dir', type=str, required=True)
-	preprocess_parser.add_argument('--noise_dirs', nargs='+', type=str, required=True)
-	preprocess_parser.add_argument('--preprocessed_blob_path', type=str, required=True)
-	preprocess_parser.add_argument('--speakers', nargs='+', type=str)
-	preprocess_parser.add_argument('--ignored_speakers', nargs='+', type=str)
-	preprocess_parser.set_defaults(func=preprocess)
+	preprocess_parser.add_argument('-dn', '--data_name', type=str, required=True)
+	preprocess_parser.add_argument('-ds', '--dataset', type=str, required=True)
+	preprocess_parser.add_argument('-s', '--speakers', nargs='+', type=str)
+	preprocess_parser.add_argument('-is', '--ignored_speakers', nargs='+', type=str)
+	preprocess_parser.add_argument('-n', '--noise_dirs', nargs='+', type=str, required=True)
+	preprocess_parser.set_defaults(func=preprocess, which='preprocess')
+
+	# generate_parser = action_parsers.add_parser('generate_vocoder_dataset')
+	# generate_parser.add_argument('-tdn', '--train_data_name', type=str, required=True)
+	# generate_parser.add_argument('-mn', '--model', type=str, required=True)
+	# generate_parser.add_argument('-fps', '--frames_per_second', type=int, default=25)
+	# generate_parser.add_argument('-sr', '--sampling_rate', type=int, default=16000)
+	# generate_parser.set_defaults(func=generate_vocoder_dataset)
 
 	train_parser = action_parsers.add_parser('train')
-	train_parser.add_argument('--train_preprocessed_blob_paths', nargs='+', type=str, required=True)
-	train_parser.add_argument('--validation_preprocessed_blob_paths', nargs='+', type=str, required=True)
-	train_parser.add_argument('--normalization_cache', type=str, required=True)
-	train_parser.add_argument('--model_cache_dir', type=str, required=True)
-	train_parser.add_argument('--tensorboard_dir', type=str, required=False)
+	train_parser.add_argument('-mn', '--model', type=str, required=True)
+	train_parser.add_argument('-tdn', '--train_data_names', nargs='+', type=str, required=True)
+	train_parser.add_argument('-vdn', '--val_data_names', nargs='+', type=str, required=True)
 	train_parser.set_defaults(func=train)
 
+	# train_vocoder_parser = action_parsers.add_parser('train_vocoder')
+	# train_vocoder_parser.add_argument('-mn', '--model', type=str, required=True)
+	# train_vocoder_parser.add_argument('-tdn', '--train_data_name', type=str, required=True)
+	# train_vocoder_parser.add_argument('-vdn', '--val_data_name', type=str, required=True)
+	# train_vocoder_parser.set_defaults(func=train_vocoder)
+
 	predict_parser = action_parsers.add_parser('predict')
-	predict_parser.add_argument('--dataset_dir', type=str, required=True)
-	predict_parser.add_argument('--noise_dirs', nargs='+', type=str, required=True)
-	predict_parser.add_argument('--model_cache_dir', type=str, required=True)
-	predict_parser.add_argument('--normalization_cache', type=str, required=True)
-	predict_parser.add_argument('--prediction_output_dir', type=str, required=True)
-	predict_parser.add_argument('--speakers', nargs='+', type=str)
-	predict_parser.add_argument('--ignored_speakers', nargs='+', type=str)
+	predict_parser.add_argument('-mn', '--model', type=str, required=True)
+	predict_parser.add_argument('-ds', '--dataset', type=str, required=True)
+	predict_parser.add_argument('-s', '--speakers', nargs='+', type=str, required=True)
+	predict_parser.add_argument('-is', '--ignored_speakers', nargs='+', type=str)
+	predict_parser.add_argument('-n', '--noise_dirs', nargs='+', type=str, required=True)
 	predict_parser.set_defaults(func=predict)
+
+	test_on_set_parser = action_parsers.add_parser('test_on_set')
+	test_on_set_parser.add_argument('-mn', '--model', type=str, required=True)
+	test_on_set_parser.add_argument('-dn', '--data_name', type=str, required=True)
+	test_on_set_parser.set_defaults(func=test_on_set)
+
+	# predict_vocoder_parser = action_parsers.add_parser('predict_vocoder')
+	# predict_vocoder_parser.add_argument('-mn', '--model', type=str, required=True)
+	# predict_vocoder_parser.add_argument('-dn', '--data_name', type=str, required=True)
+	# predict_vocoder_parser.set_defaults(func=predict_vocoder)
+	#
+	# test_parser = action_parsers.add_parser('test')
+	# test_parser.add_argument('-mn', '--model', type=str, required=True)
+	# test_parser.add_argument('-p', '--paths', type=str, nargs='+', required=True)
+	# test_parser.set_defaults(func=test, which='test')
 
 	args = parser.parse_args()
 	args.func(args)
