@@ -287,6 +287,8 @@ def train_vocoder(args):
 		OVERFIT_NUM = 15 # todo: remove
 		train_enhanced_spectrograms = data['enhanced_spectrograms'][:OVERFIT_NUM]
 		train_waveforms = data['source_waveforms'][:OVERFIT_NUM]
+		# train_enhanced_spectrograms = data['enhanced_spectrograms']
+		# train_waveforms = data['source_waveforms']
 
 	with np.load(val_preprocessed_blob_path) as data:
 		val_enhanced_spectrograms = data['enhanced_spectrograms']
@@ -294,6 +296,7 @@ def train_vocoder(args):
 
 	val_enhanced_spectrograms = train_enhanced_spectrograms
 	val_waveforms = train_waveforms
+
 
 	print 'building network...'
 	network = WavenetVocoder(80, 15, (train_enhanced_spectrograms.shape[1:]))

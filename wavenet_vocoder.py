@@ -16,6 +16,23 @@ class WavenetVocoder(object):
 			self.__model = self.build(spec_shape)
 
 
+	def build_upsample_net(self, input_shape):
+		layer_input = Input(input_shape)
+		permuted = Permute((2, 1))(layer_input)
+		extended = Lambda(lambda a: tf.expand_dims(a, axis=1))(permuted)
+
+		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 2), padding='same')(extended)
+		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 2), padding='same')(x)
+		# x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 10), strides=(1, 10), padding='same')(x)
+
+		x = Lambda(lambda a: tf.squeeze(a, axis=1))(x)
+
+		x = UpSampling1D(size=40)(x)
+
+		model = Model(layer_input, x, name='Upsample_Net')
+		model.summary()
+		return model
+
 	@staticmethod
 	def build_dilated_conv_block(input_shape, kernel_size, dilation, num_dilated_filters, num_skip_filters, number=None):
 		layer_input = Input(input_shape)
@@ -33,22 +50,7 @@ class WavenetVocoder(object):
 		else:
 			model = Model(layer_input, outputs=[output, skip])
 
-		model.summary()
 
-		return model
-
-	def build_upsample_net(self, input_shape):
-		layer_input = Input(input_shape)
-		permuted = Permute((2, 1))(layer_input)
-		extended = Lambda(lambda a: tf.expand_dims(a, axis=1))(permuted)
-
-		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 4), strides=(1, 4), padding='same')(extended)
-		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 4), strides=(1, 4), padding='same')(x)
-		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 10), strides=(1, 10), padding='same')(x)
-		x = Lambda(lambda a: tf.squeeze(a, axis=1))(x)
-
-		model = Model(layer_input, x, name='Upsample_Net')
-		model.summary()
 		return model
 
 	def build(self, spec_shape):
@@ -62,7 +64,7 @@ class WavenetVocoder(object):
 
 		skips = []
 		for i in range(self.num_dilated_blocks):
-			out, skip = self.build_dilated_conv_block((None, 16), 5, 2**(i % 10), 16, 16, number=i+1)(out)
+			out, skip = self.build_dilated_conv_block((None, 16), 2, 2**(i % 10), 16, 16, number=i+1)(out)
 			skips.append(skip)
 
 		stack = Concatenate()(skips)
@@ -71,9 +73,10 @@ class WavenetVocoder(object):
 		MoL_params = Conv1D(30, 1)(stack)
 
 		model = Model(spectrogram, outputs=[MoL_params], name='Vocoder')
-		optimizer = optimizers.adam(lr=5e-4)
+		optimizer = optimizers.adam(lr=1e-3)
 		model.compile(loss=loss, optimizer=optimizer)
 
+		print 'Vocoder'
 		model.summary()
 
 		return model
@@ -82,8 +85,8 @@ class WavenetVocoder(object):
 		train_waveforms = np.c_[train_waveforms, np.zeros((train_waveforms.shape[0], 160))] # todo: fix net size or label size
 		val_waveforms = np.c_[val_waveforms, np.zeros((val_waveforms.shape[0], 160))]
 
-		train_waveforms = np.stack([train_waveforms] * 30, -1)
-		val_waveforms = np.stack([val_waveforms] * 30, -1)
+		train_waveforms = np.stack([train_waveforms] * 30, -1) * 127.5
+		val_waveforms = np.stack([val_waveforms] * 30, -1) * 127.5
 
 		model_cache = ModelCache(model_cache_dir)
 		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
@@ -94,7 +97,7 @@ class WavenetVocoder(object):
 		self.__model.fit(
 			x=[train_enhanced_spectrograms], y=[train_waveforms],
 			validation_data=([val_enhanced_spectrograms], [val_waveforms]),
-			batch_size=1, epochs=1000,
+			batch_size=1, epochs=100000,
 			callbacks=[checkpoint, lr_decay, early_stopping],
 			verbose=1
 		)
@@ -102,8 +105,10 @@ class WavenetVocoder(object):
 	def predict_one_sample(self, enhanced_spectrograms):
 		params = self.__model.predict(enhanced_spectrograms, batch_size=1)
 		means = np.squeeze(params[:,:,:10])
-		sigmas = np.squeeze(np.abs(params[:,:,10:20]))
-		weights = np.squeeze(np.abs(params[:,:,20:]))
+		sigmas = np.exp(np.squeeze(np.abs(params[:,:,10:20])))
+		weights_logits = np.squeeze(np.abs(params[:,:,20:]))
+
+		weights = np.exp(weights_logits - log_sum_exp(weights_logits))
 
 		column_indices = sample_many_categorical_once(weights)
 		rows_indices = np.arange(means.shape[0])
@@ -111,7 +116,7 @@ class WavenetVocoder(object):
 		means = means[rows_indices, column_indices]
 		sigmas = sigmas[rows_indices, column_indices]
 
-		return np.random.logistic(means, sigmas)
+		return np.random.logistic(means, sigmas) / 127.5
 
 	@staticmethod
 	def load(model_cache_dir):
@@ -126,19 +131,20 @@ class WavenetVocoder(object):
 def loss(y_true, y_pred):
 	y_true = tf.expand_dims(y_true[:,:,0])
 
-
 	means = y_pred[:,:,:10]
-	sigmas = y_pred[:,:,10:20]
-	weights = y_pred[:,:,20:]
+	log_sigmas = y_pred[:,:,10:20]
+	weights_logits = y_pred[:,:,20:]
 
-	sum_of_weights = tf.sum(weights, axis=2)
+	log_weights = weights_logits - tf.logsumexp(weights_logits)
 
+	sigmas = tf.exp(log_sigmas)
 	args = (y_true - means) / (2 * sigmas)
 	args = tf.stack([args, -args], axis=-1)
-	loglogistic = -tf.log(tf.abs(sigmas)) - 2 * tf.logsumexp(args, axis=-1)
-	logs = loglogistic + tf.log(tf.abs(weights))
+	loglogistic = -log_sigmas - 2 * tf.logsumexp(args, axis=-1)
+	logs = loglogistic + log_weights
 	loglikelihood = tf.sum(tf.logsumexp(logs, axis=-1), axis=-1)
-	return -loglikelihood + (1 - sum_of_weights) ** 2
+
+	return -loglikelihood
 
 
 def sample_many_categorical_once(weights):
@@ -151,7 +157,12 @@ def sample_many_categorical_once(weights):
 	return np.squeeze(indices)
 
 
+def log_sum_exp(x):
+	m = x.max()
+	return m + np.log(np.sum(np.exp(x - m)))
+
+
 if __name__ == '__main__':
-	net = WavenetVocoder(80, 15, (80, 20))
+	net = WavenetVocoder(16, 15, (80, 20))
 
 
