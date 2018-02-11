@@ -12,7 +12,7 @@ class AudioVisualDataset:
 		audio_file_paths = []
 
 		for speaker_id in speaker_ids:
-			audio_file_paths.extend(glob.glob(os.path.join(self._base_path, speaker_id, "audio", "*.wav")))
+			audio_file_paths.extend(glob.glob(os.path.join(self._base_path, speaker_id, 'audio', '*.wav')))
 
 		if shuffle:
 			random.shuffle(audio_file_paths)
@@ -39,7 +39,7 @@ class AudioVisualSubset:
 
 	@staticmethod
 	def _audio_to_video_path(audio_file_path):
-		return glob.glob(os.path.splitext(audio_file_path.replace("audio", "video"))[0] + ".*")[0]
+		return glob.glob(os.path.splitext(audio_file_path.replace('/audio/', '/video/'))[0] + '.*')[0]
 
 
 class AudioDataset:
