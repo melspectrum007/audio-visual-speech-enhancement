@@ -10,8 +10,7 @@ import keras.backend as tf
 import numpy as np
 import librosa as lb
 
-NUM_FRAMES = 44
-NUM_MEL_FREQS = 320
+NUM_MEL_FREQS = 321
 
 class SpeechEnhancementNetwork(object):
 
@@ -64,7 +63,7 @@ class SpeechEnhancementNetwork(object):
 		x = LeakyReLU()(x)
 
 		x = Permute((2, 1, 3))(x)
-		x = Conv2D(2048, kernel_size=(1, 80))(x)
+		x = Conv2D(2048, kernel_size=(1, 81))(x)
 
 		x = Lambda(tf.squeeze, arguments={'axis':2})(x)
 
@@ -174,7 +173,7 @@ class SpeechEnhancementNetwork(object):
 
 		x = Bidirectional(LSTM(hidden_units, return_sequences=True))(shared_input)
 
-		mask = LSTM(640, activation='sigmoid', return_sequences=True)(x)
+		mask = LSTM(NUM_MEL_FREQS * 2, activation='sigmoid', return_sequences=True)(x)
 		# mask = LSTM(640, activation='sigmoid', return_sequences=True, unroll=True)(mask)
 
 		model = Model(inputs=shared_input, outputs=mask)
@@ -281,7 +280,7 @@ class SpeechEnhancementNetwork(object):
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
-		model = load_model(model_cache.model_path(), custom_objects={'tf':tf, 'NUM_FRAMES':NUM_FRAMES})
+		model = load_model(model_cache.model_path(), custom_objects={'tf':tf, 'NUM_MEL_FREQS':NUM_MEL_FREQS})
 
 		return SpeechEnhancementNetwork(model)
 
@@ -295,4 +294,4 @@ class ModelCache(object):
 		return os.path.join(self.__cache_dir, "model.h5py")
 
 if __name__ == '__main__':
-	net = SpeechEnhancementNetwork.build((320, None, 2), (128, 128, None))
+	net = SpeechEnhancementNetwork.build((NUM_MEL_FREQS, None, 2), (128, 128, None))

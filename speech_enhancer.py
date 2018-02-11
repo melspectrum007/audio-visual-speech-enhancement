@@ -86,45 +86,30 @@ def train(args):
 	train_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.train_data_names]
 	val_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.val_data_names]
 
-	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms = load_preprocessed_samples(
+	train_video_frames, train_mixed_stfts, train_source_stfts = load_preprocessed_samples(
 		train_preprocessed_blob_paths, max_samples=None
 	)
 
-	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms = load_preprocessed_samples(
+	val_video_frames, val_mixed_stfts, val_source_stfts = load_preprocessed_samples(
 		val_preprocessed_blob_paths, max_samples=None
 	)
 
-	# for overfit only:
-	train_mixed_spectrograms = train_mixed_spectrograms[:, :, :-1, :, :]
-	train_speech_spectrograms = train_speech_spectrograms[:, :, :-1, :, :]
-	validation_mixed_spectrograms = validation_mixed_spectrograms[:, :, :-1, :, :]
-	validation_speech_spectrograms = validation_speech_spectrograms[:, :, :-1, :, :]
+	train_mixed_stfts = train_mixed_stfts[:,:-1,:,:]
+	train_source_stfts = train_source_stfts[:,:-1,:,:]
+	val_mixed_stfts = val_mixed_stfts[:,:-1,:,:]
+	val_source_stfts = val_source_stfts[:,:-1,:,:]
 
-	train_mixed_spectrograms = train_mixed_spectrograms.reshape((-1,) + train_mixed_spectrograms.shape[2:])
-	train_speech_spectrograms = train_speech_spectrograms.reshape((-1,) + train_speech_spectrograms.shape[2:])
-	validation_mixed_spectrograms = validation_mixed_spectrograms.reshape((-1,) + validation_mixed_spectrograms.shape[2:])
-	validation_speech_spectrograms = validation_speech_spectrograms.reshape((-1,) + validation_speech_spectrograms.shape[2:])
-
-
-	train_video_samples = train_video_samples.reshape((-1,) + train_video_samples.shape[2:])
-	validation_video_samples = validation_video_samples.reshape((-1,) + validation_video_samples.shape[2:])
-
-	# train_mixed_spectrograms = train_mixed_spectrograms[:,:-1,:,:]
-	# train_speech_spectrograms = train_speech_spectrograms[:,:-1,:,:]
-	# validation_mixed_spectrograms = validation_mixed_spectrograms[:,:-1,:,:]
-	# validation_speech_spectrograms = validation_speech_spectrograms[:,:-1,:,:]
-
-	video_normalizer = dp.VideoNormalizer(train_video_samples)
-	video_normalizer.normalize(train_video_samples)
-	video_normalizer.normalize(validation_video_samples)
+	video_normalizer = dp.VideoNormalizer(train_video_frames)
+	video_normalizer.normalize(train_video_frames)
+	video_normalizer.normalize(val_video_frames)
 
 	with open(normalization_cache_path, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
-	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
+	network = SpeechEnhancementNetwork.build(train_mixed_stfts.shape[1:], train_video_frames.shape[1:])
 	network.train(
-		train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
-		validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
+		train_mixed_stfts, train_video_frames, train_source_stfts,
+		val_mixed_stfts, val_video_frames, val_source_stfts,
 		model_cache_dir
 	)
 
