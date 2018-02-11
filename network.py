@@ -113,7 +113,7 @@ class SpeechEnhancementNetwork(object):
 		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
 		x = Dropout(0.25)(x)
 
-		x = Convolution3D(256, kernel_size=(2, 2, 3), padding='valid')(x)
+		x = Convolution3D(256, kernel_size=(2, 2, 1), padding='valid')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
@@ -294,4 +294,4 @@ class ModelCache(object):
 		return os.path.join(self.__cache_dir, "model.h5py")
 
 if __name__ == '__main__':
-	net = SpeechEnhancementNetwork.build((NUM_MEL_FREQS, None, 2), (128, 128, None))
+	net = SpeechEnhancementNetwork.build([NUM_MEL_FREQS, None, 2], [128, 128, None])

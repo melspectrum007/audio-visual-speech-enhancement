@@ -51,9 +51,9 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 		print('loading preprocessed samples from %s' % preprocessed_blob_path)
 		
 		with np.load(preprocessed_blob_path) as data:
-			all_video_frames.append(data['video_samples'][:max_samples])
-			all_mixed_stfts.append(data['mixed_spectrograms'][:max_samples])
-			all_source_stfts.append(data['speech_spectrograms'][:max_samples])
+			all_video_frames.append(data['video_frames'][:max_samples])
+			all_mixed_stfts.append(data['mixed_stfts'][:max_samples])
+			all_source_stfts.append(data['source_stfts'][:max_samples])
 
 	video_samples = np.concatenate(all_video_frames, axis=0)
 	mixed_stfts = np.concatenate(all_mixed_stfts, axis=0)
@@ -94,11 +94,6 @@ def train(args):
 		val_preprocessed_blob_paths, max_samples=None
 	)
 
-	train_mixed_stfts = train_mixed_stfts[:,:-1,:,:]
-	train_source_stfts = train_source_stfts[:,:-1,:,:]
-	val_mixed_stfts = val_mixed_stfts[:,:-1,:,:]
-	val_source_stfts = val_source_stfts[:,:-1,:,:]
-
 	video_normalizer = dp.VideoNormalizer(train_video_frames)
 	video_normalizer.normalize(train_video_frames)
 	video_normalizer.normalize(val_video_frames)
@@ -106,7 +101,13 @@ def train(args):
 	with open(normalization_cache_path, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
-	network = SpeechEnhancementNetwork.build(train_mixed_stfts.shape[1:], train_video_frames.shape[1:])
+	audio_shape = list(train_mixed_stfts.shape[1:])
+	audio_shape[1] = None
+
+	video_shape = list(train_video_frames[1:])
+	video_shape[2] = None
+
+	network = SpeechEnhancementNetwork.build(audio_shape, video_shape)
 	network.train(
 		train_mixed_stfts, train_video_frames, train_source_stfts,
 		val_mixed_stfts, val_video_frames, val_source_stfts,
