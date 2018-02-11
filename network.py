@@ -11,6 +11,7 @@ import numpy as np
 import librosa as lb
 
 NUM_FRAMES = 44
+NUM_MEL_FREQS = 320
 
 class SpeechEnhancementNetwork(object):
 
@@ -31,7 +32,7 @@ class SpeechEnhancementNetwork(object):
 		video_encoder = cls.__build_video_encoder(video_shape)
 		video_embedding = video_encoder(video_input)
 
-		stft_shared_embeding = concatenate([stft_audio_embedding, video_embedding], axis=1)
+		stft_shared_embeding = concatenate([stft_audio_embedding, video_embedding], axis=2)
 
 		model = Model(inputs=[stft_audio_input, video_input], outputs=[stft_shared_embeding])
 		print 'Encoder'
@@ -58,14 +59,14 @@ class SpeechEnhancementNetwork(object):
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		x = Convolution2D(8, kernel_size=(3, 3), strides=(1, 1), padding='same')(x)
+		x = Convolution2D(64, kernel_size=(3, 3), strides=(1, 1), padding='same')(x)
 		x = BatchNormalization()(x)
 		x = LeakyReLU()(x)
 
-		T = extended_audio_spectrogram_shape[1]
+		x = Permute((2, 1, 3))(x)
+		x = Conv2D(2048, kernel_size=(1, 80))(x)
 
-		x = Permute((1, 3, 2))(x)
-		x = Reshape((-1, T))(x)
+		x = Lambda(tf.squeeze, arguments={'axis':2})(x)
 
 		model = Model(inputs=[audio_input], outputs=[x])
 		print 'Audio Encoder'
@@ -118,13 +119,10 @@ class SpeechEnhancementNetwork(object):
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		Squeeze = Lambda(lambda a: tf.squeeze(a, axis=1))
-
-		x = Squeeze(Squeeze(x))
+		x = Lambda(tf.squeeze, arguments={'axis': 1})(x)
+		x = Lambda(tf.squeeze, arguments={'axis': 1})(x)
 
 		x = UpSampling1D(4)(x)
-
-		x = Permute((2, 1))(x)
 
 		model = Model(inputs=video_input, outputs=x)
 		print 'Video Encoder'
@@ -176,7 +174,7 @@ class SpeechEnhancementNetwork(object):
 
 		x = Bidirectional(LSTM(hidden_units, return_sequences=True))(shared_input)
 
-		mask = LSTM(640, activation='sigmoid', return_sequences=True, unroll=True)(x)
+		mask = LSTM(640, activation='sigmoid', return_sequences=True)(x)
 		# mask = LSTM(640, activation='sigmoid', return_sequences=True, unroll=True)(mask)
 
 		model = Model(inputs=shared_input, outputs=mask)
@@ -193,33 +191,24 @@ class SpeechEnhancementNetwork(object):
 		video_shape.append(1)
 
 		encoder = cls.__build_encoder(audio_shape, video_shape)
-		attention = cls.__build_attention((NUM_FRAMES, 896), 1024)
+		attention = cls.__build_attention((None, 2304), 1024)
 		# decoder = cls.__build_decoder((640, 44))
 
 		Db2amp = Lambda(lambda x: ((tf.exp(tf.abs(x)) - 1) * tf.sign(x)))
-		Real = Lambda(lambda x: x[:,:,:,0])
-		Imag = Lambda(lambda x: x[:,:,:,1])
 		Stack = Lambda(lambda x: tf.stack(x, axis=-1))
 
 		audio_input = Input(shape=audio_shape)
 		video_input = Input(shape=video_shape)
 
 		shared_embeding = encoder([audio_input, video_input])
-		shared_embeding = Permute((2, 1))(shared_embeding)
-
 		mask = attention(shared_embeding)
 		mask = Permute((2, 1))(mask)
-		mask = Reshape([320, 2, NUM_FRAMES])(mask)
-		mask = Permute((1, 3, 2))(mask)
-
-		# mask = decoder(mask)
+		mask_real = Lambda(lambda a: a[:,:NUM_MEL_FREQS,:])(mask)
+		mask_imag = Lambda(lambda a: a[:,NUM_MEL_FREQS:,:])(mask)
 
 		linear_audio = Db2amp(audio_input)
-
-		in_real = Real(linear_audio)
-		in_imag = Imag(linear_audio)
-		mask_real = Real(mask)
-		mask_imag = Imag(mask)
+		in_real = Lambda(lambda a: a[:,:,:,0])(linear_audio)
+		in_imag = Lambda(lambda a: a[:,:,:,1])(linear_audio)
 
 		output_real = Subtract()([Multiply()([in_real, mask_real]), Multiply()([in_imag, mask_imag])])
 		output_imag = Add()([Multiply()([in_imag, mask_real]), Multiply()([in_real, mask_imag])])
@@ -306,4 +295,4 @@ class ModelCache(object):
 		return os.path.join(self.__cache_dir, "model.h5py")
 
 if __name__ == '__main__':
-	net = SpeechEnhancementNetwork.build((320, NUM_FRAMES, 2), (128, 128, NUM_FRAMES / 4))
+	net = SpeechEnhancementNetwork.build((320, None, 2), (128, 128, None))

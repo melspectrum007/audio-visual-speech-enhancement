@@ -134,6 +134,8 @@ def train(args):
 def test_on_set(args):
 	cache_dir = os.path.join(args.base_folder, 'cache')
 	prediction_output_dir = os.path.join(args.base_folder, 'out', args.model)
+	if not os.path.exists(prediction_output_dir):
+		os.mkdir(prediction_output_dir)
 	if not os.path.exists(cache_dir):
 		os.mkdir(cache_dir)
 	models_dir = os.path.join(cache_dir, 'models')
@@ -170,14 +172,16 @@ def test_on_set(args):
 	enhanced_stft = enhanced_stft.reshape(orig_shape)
 
 	data_processor = utils.DataProcessor(25, 16000)
+	mixed_for_norm = AudioSignal.from_wav_file(BASE_FOLDER + '/mixture.wav')
+	data_processor.mean, data_processor.std = mixed_for_norm.normalize()
 
 	# storage = PredictionStorage(prediction_output_dir)
 	for	i in range(enhanced_stft.shape[0]):
 		enhanced = np.concatenate(list(enhanced_stft[i]), 1)
 		signal = data_processor.reconstruct_signal(enhanced, 16000)
-		mixed = data_processor.reconstruct_signal(test_mixed_spectrograms, 16000)
+		# mixed = data_processor.reconstruct_signal(test_mixed_spectrograms, 16000)
 		signal.save_to_wav_file(os.path.join(prediction_output_dir, 'enhanced_' + str(i) + '.wav'))
-		mixed.save_to_wav_file(os.path.join(prediction_output_dir, 'mixed_' + str(i) + '.wav'))
+		# mixed.save_to_wav_file(os.path.join(prediction_output_dir, 'mixed_' + str(i) + '.wav'))
 
 
 
