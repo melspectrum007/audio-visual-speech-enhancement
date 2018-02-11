@@ -36,15 +36,15 @@ class DataProcessor(object):
 		return np.stack((real, imag), axis=-1)
 
 	def truncate_sample_to_same_length(self, video_frames, mixed_stft, label_stft):
-		video_len = video_frames.shape[-1] * self.audio_bins_per_frame
-		mixed_len = mixed_stft.shape[-1]
-		label_len = label_stft.shape[-1]
+		video_len = video_frames.shape[2] * self.audio_bins_per_frame
+		mixed_len = mixed_stft.shape[1]
+		label_len = label_stft.shape[1]
 
 		min_audio_frames = min(video_len, mixed_len, label_len)
 		# make sure it divides by audio_bins_per_frame
 		min_audio_frames = int(min_audio_frames / self.audio_bins_per_frame) * self.audio_bins_per_frame
 
-		return video_frames[:,:,min_audio_frames/self.audio_bins_per_frame], mixed_stft[:,min_audio_frames,:], label_stft[:,min_audio_frames,:]
+		return video_frames[:,:,:min_audio_frames/self.audio_bins_per_frame], mixed_stft[:,:min_audio_frames,:], label_stft[:,:min_audio_frames,:]
 
 	def preprocess_sample(self, video_file_path, source_file_path, noise_file_path):
 		print ('preprocessing %s, %s' % (source_file_path, noise_file_path))
@@ -52,11 +52,11 @@ class DataProcessor(object):
 		source_signal = AudioSignal.from_wav_file(source_file_path)
 
 		video_frames = get_frames(video_file_path)
-		video_frames = np.rollaxis(video_frames, 0, 3) 	# change shape from (num_frames, rows, cols) to (rows, cols, num_frames)
+		mouth_cropped_frames = crop_mouth(video_frames)
 		mixed_stft = self.get_stft(mixed_signal.get_data())
 		label_stft = self.get_stft(source_signal.get_data())
 
-		return self.truncate_sample_to_same_length(video_frames, mixed_stft, label_stft)
+		return self.truncate_sample_to_same_length(mouth_cropped_frames, mixed_stft, label_stft)
 
 	def try_preprocess_sample(self, sample):
 		try:
@@ -109,14 +109,18 @@ def strip_audio(video_path):
 
 	return signal
 
-def pad_time_of_short_elements(element_list):
-	max_len = max([e.shape[-1] for e in element_list])
+def pad_time_of_short_elements(element_list, axis_to_pad):
+	max_len = max([e.shape[axis_to_pad] for e in element_list])
 	new_list = []
 	for e in element_list:
-		if e.shape[-1] < max_len:
-			new_list.append(np.pad(e, [(0,0)] * (e.ndim - 1) + [(0, max_len - e.shape[-1])], 'constant'))
+		if e.shape[axis_to_pad] < max_len:
+			sh = list(e.shape)
+			sh[axis_to_pad] = max_len - e.shape[axis_to_pad]
+			new_list.append(np.concatenate((e, np.zeros(sh)), axis_to_pad))
 		else:
 			new_list.append(e)
+
+	return new_list
 
 def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 	with VideoFileReader(video_file_paths[0]) as reader:
@@ -132,8 +136,8 @@ def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 	video_framess, mixed_stfts, source_stfts = zip(*preprocessed)
 
 	return (
-		np.stack(pad_time_of_short_elements(video_framess)),
-		np.stack(pad_time_of_short_elements(mixed_stfts)),
-		np.stack(pad_time_of_short_elements(source_stfts))
+		np.stack(pad_time_of_short_elements(video_framess, 2)),
+		np.stack(pad_time_of_short_elements(mixed_stfts, 1)),
+		np.stack(pad_time_of_short_elements(source_stfts, 1))
 	)
 

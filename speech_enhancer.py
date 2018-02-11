@@ -36,9 +36,9 @@ def preprocess(args):
 
 	np.savez(
 		preprocessed_blob_path,
-		video_samples=video_frames,
-		mixed_spectrograms=mixed_stfts,
-		speech_spectrograms=source_stfts,
+		video_frames=video_frames,
+		mixed_stfts=mixed_stfts,
+		source_stfts=source_stfts,
 	)
 
 
