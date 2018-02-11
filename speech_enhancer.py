@@ -1,6 +1,5 @@
 import argparse, os, logging, pickle
 import numpy as np
-import librosa as lb
 import utils
 import data_processor as dp
 
@@ -31,44 +30,44 @@ def preprocess(args):
 		dataset_path, speaker_ids, args.noise_dirs, max_files=1500
 	)
 
-	video_samples, mixed_spectrograms, speech_spectrograms = utils.preprocess_data(
+	video_frames, mixed_stfts, source_stfts = utils.preprocess_data(
 		video_file_paths, speech_file_paths, noise_file_paths
 	)
 
 	np.savez(
 		preprocessed_blob_path,
-		video_samples=video_samples,
-		mixed_spectrograms=mixed_spectrograms,
-		speech_spectrograms=speech_spectrograms,
+		video_samples=video_frames,
+		mixed_spectrograms=mixed_stfts,
+		speech_spectrograms=source_stfts,
 	)
 
 
 def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
-	all_video_samples = []
-	all_mixed_spectrograms = []
-	all_speech_spectrograms = []
+	all_video_frames = []
+	all_mixed_stfts = []
+	all_source_stfts = []
 
 	for preprocessed_blob_path in preprocessed_blob_paths:
 		print('loading preprocessed samples from %s' % preprocessed_blob_path)
 		
 		with np.load(preprocessed_blob_path) as data:
-			all_video_samples.append(data['video_samples'][:max_samples])
-			all_mixed_spectrograms.append(data['mixed_spectrograms'][:max_samples])
-			all_speech_spectrograms.append(data['speech_spectrograms'][:max_samples])
+			all_video_frames.append(data['video_samples'][:max_samples])
+			all_mixed_stfts.append(data['mixed_spectrograms'][:max_samples])
+			all_source_stfts.append(data['speech_spectrograms'][:max_samples])
 
-	video_samples = np.concatenate(all_video_samples, axis=0)
-	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
-	speech_spectrograms = np.concatenate(all_speech_spectrograms, axis=0)
+	video_samples = np.concatenate(all_video_frames, axis=0)
+	mixed_stfts = np.concatenate(all_mixed_stfts, axis=0)
+	source_stfts = np.concatenate(all_source_stfts, axis=0)
 
 	permutation = np.random.permutation(video_samples.shape[0])
 	video_samples = video_samples[permutation]
-	mixed_spectrograms = mixed_spectrograms[permutation]
-	speech_spectrograms = speech_spectrograms[permutation]
+	mixed_stfts = mixed_stfts[permutation]
+	source_stfts = source_stfts[permutation]
 
 	return (
 		video_samples,
-		mixed_spectrograms,
-		speech_spectrograms,
+		mixed_stfts,
+		source_stfts,
 	)
 
 
