@@ -104,7 +104,7 @@ def train(args):
 	audio_shape = list(train_mixed_stfts.shape[1:])
 	audio_shape[1] = None
 
-	video_shape = list(train_video_frames[1:])
+	video_shape = list(train_video_frames.shape[1:])
 	video_shape[2] = None
 
 	network = SpeechEnhancementNetwork.build(audio_shape, video_shape)

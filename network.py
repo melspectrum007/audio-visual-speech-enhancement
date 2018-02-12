@@ -1,14 +1,15 @@
-import os
 
 from keras import optimizers
 from keras.layers import *
 
 from keras.models import Model, load_model
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard
+from keras.utils import multi_gpu_model
 
-import keras.backend as tf
+import keras.backend as K
+import tensorflow as tf
 import numpy as np
-import librosa as lb
+import os
 
 NUM_MEL_FREQS = 321
 
@@ -65,7 +66,7 @@ class SpeechEnhancementNetwork(object):
 		x = Permute((2, 1, 3))(x)
 		x = Conv2D(2048, kernel_size=(1, 81))(x)
 
-		x = Lambda(tf.squeeze, arguments={'axis':2})(x)
+		x = Lambda(K.squeeze, arguments={'axis':2})(x)
 
 		model = Model(inputs=[audio_input], outputs=[x])
 		print 'Audio Encoder'
@@ -118,8 +119,8 @@ class SpeechEnhancementNetwork(object):
 		x = LeakyReLU()(x)
 		x = Dropout(0.25)(x)
 
-		x = Lambda(tf.squeeze, arguments={'axis': 1})(x)
-		x = Lambda(tf.squeeze, arguments={'axis': 1})(x)
+		x = Lambda(K.squeeze, arguments={'axis': 1})(x)
+		x = Lambda(K.squeeze, arguments={'axis': 1})(x)
 
 		x = UpSampling1D(4)(x)
 
@@ -134,7 +135,7 @@ class SpeechEnhancementNetwork(object):
 
 		embedding = Input(embedding_shape)
 		embedding_expanded = Reshape((80, 8, 44))(embedding)
-		embedding_expanded = Lambda(lambda a: tf.permute_dimensions(a, (0, 1, 3, 2)))(embedding_expanded)
+		embedding_expanded = Lambda(lambda a: K.permute_dimensions(a, (0, 1, 3, 2)))(embedding_expanded)
 
 
 		x = Deconvolution2D(8, kernel_size=(3, 3), strides=(1, 1), padding='same')(embedding_expanded)
@@ -193,8 +194,8 @@ class SpeechEnhancementNetwork(object):
 		attention = cls.__build_attention((None, 2304), 1024)
 		# decoder = cls.__build_decoder((640, 44))
 
-		Db2amp = Lambda(lambda x: ((tf.exp(tf.abs(x)) - 1) * tf.sign(x)))
-		Stack = Lambda(lambda x: tf.stack(x, axis=-1))
+		Db2amp = Lambda(lambda x: ((K.exp(K.abs(x)) - 1) * K.sign(x)))
+		Stack = Lambda(lambda x: K.stack(x, axis=-1))
 
 		audio_input = Input(shape=audio_shape)
 		video_input = Input(shape=video_shape)
@@ -247,7 +248,7 @@ class SpeechEnhancementNetwork(object):
 				[validation_label]
 			),
 
-			batch_size=16, epochs=1000,
+			batch_size=1, epochs=1000,
 			callbacks=[checkpoint, lr_decay, early_stopping],
 			verbose=1
 		)
@@ -280,7 +281,7 @@ class SpeechEnhancementNetwork(object):
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
-		model = load_model(model_cache.model_path(), custom_objects={'tf':tf, 'NUM_MEL_FREQS':NUM_MEL_FREQS})
+		model = load_model(model_cache.model_path(), custom_objects={'tf':K, 'NUM_MEL_FREQS':NUM_MEL_FREQS})
 
 		return SpeechEnhancementNetwork(model)
 
