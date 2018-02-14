@@ -30,7 +30,7 @@ def predict(args):
 	cmdline = [
 		'sbatch', '--mem=%d' % args.mem, '--gres=gpu:%d' % args.gpus, '-c%d' % args.cpus, '--time=%s' % args.time,
 		'--job-name=predict-%s' % args.model, '--output=out/predict-%s.out' % args.model,
-		'scripts/predict.sh', args.model, args.dataset, ' '.join(args.speakers), ' '.join(args.noise_dirs)
+		'scripts/predict.sh', args.model, args.data_name
 	]
 
 	print(' '.join(cmdline))
@@ -64,9 +64,7 @@ def main():
 
 	predict_parser = action_parsers.add_parser('predict')
 	predict_parser.add_argument('-mn', '--model', type=str, required=True)
-	predict_parser.add_argument('-ds', '--dataset', type=str, required=True)
-	predict_parser.add_argument('-s', '--speakers', nargs='+', type=str, required=True)
-	predict_parser.add_argument('-n', '--noise_dirs', nargs='+', type=str, required=True)
+	predict_parser.add_argument('-dn', '--data_name', type=str, required=True)
 	predict_parser.add_argument('-m', '--mem', type=int, default=50000)
 	predict_parser.add_argument('-g', '--gpus', type=int, default=1)
 	predict_parser.add_argument('-c', '--cpus', type=int, default=4)

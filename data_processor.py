@@ -1,4 +1,5 @@
 import multiprocess
+from collections import namedtuple
 
 import numpy as np
 
@@ -98,56 +99,65 @@ def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, 
 	return mixed_spectrograms, speech_spectrograms, noise_spectrograms, original_mixed, peak
 
 
-def preprocess_sample(video_file_path, speech_file_path, noise_file_path, slice_duration_ms=200):
-	print("preprocessing sample: %s, %s, %s..." % (video_file_path, speech_file_path, noise_file_path))
+Sample = namedtuple('Sample', [
+	'speaker_id',
+	'video_file_path',
+	'speech_file_path',
+	'noise_file_path',
+	'video_samples',
+	'mixed_spectrograms',
+	'speech_spectrograms',
+	'noise_spectrograms',
+	'mixed_signal',
+	'peak',
+	'video_frame_rate'
+])
 
-	video_samples, video_frame_rate = preprocess_video_sample(video_file_path, slice_duration_ms)
+
+def preprocess_sample(speech_entry, noise_file_path, slice_duration_ms=200):
+	print("preprocessing sample: %s, %s, %s..." % (speech_entry.video_path, speech_entry.audio_path, noise_file_path))
+
+	video_samples, video_frame_rate = preprocess_video_sample(speech_entry.video_path, slice_duration_ms)
 	mixed_spectrograms, speech_spectrograms, noise_spectrograms, mixed_signal, peak = preprocess_audio_pair(
-		speech_file_path, noise_file_path, slice_duration_ms, video_samples.shape[0], video_frame_rate
+		speech_entry.audio_path, noise_file_path, slice_duration_ms, video_samples.shape[0], video_frame_rate
 	)
 
 	n_slices = min(video_samples.shape[0], mixed_spectrograms.shape[0])
 
-	return (
-		video_samples[:n_slices],
-		mixed_spectrograms[:n_slices],
-		speech_spectrograms[:n_slices],
-		noise_spectrograms[:n_slices],
-		mixed_signal,
-		peak,
-		video_frame_rate
+	return Sample(
+		speaker_id=speech_entry.speaker_id,
+		video_file_path=speech_entry.video_path,
+		speech_file_path=speech_entry.audio_path,
+		noise_file_path=noise_file_path,
+		video_samples=video_samples[:n_slices],
+		mixed_spectrograms=mixed_spectrograms[:n_slices],
+		speech_spectrograms=speech_spectrograms[:n_slices],
+		noise_spectrograms=noise_spectrograms[:n_slices],
+		mixed_signal=mixed_signal,
+		peak=peak,
+		video_frame_rate=video_frame_rate
 	)
 
 
-def try_preprocess_sample(sample):
+def try_preprocess_sample(sample_paths):
 	try:
-		return preprocess_sample(*sample)
+		return preprocess_sample(*sample_paths)
 
 	except Exception as e:
-		print("failed to preprocess %s (%s)" % (sample, e))
+		print("failed to preprocess %s (%s)" % (sample_paths, e))
 		return None
 
 
-def preprocess_data(video_file_paths, speech_file_paths, noise_file_paths):
+def preprocess_data(speech_subset, noise_file_paths):
 	print("preprocessing data...")
 
-	samples = zip(video_file_paths, speech_file_paths, noise_file_paths)
+	sample_paths = zip(speech_subset, noise_file_paths)
 
 	thread_pool = multiprocess.Pool(8)
-	preprocessed = thread_pool.map(try_preprocess_sample, samples)
-	preprocessed = [p for p in preprocessed if p is not None]
+	samples = thread_pool.map(try_preprocess_sample, sample_paths)
+	samples = [p for p in samples if p is not None]
 
-	video_samples = [p[0] for p in preprocessed]
-	mixed_spectrograms = [p[1] for p in preprocessed]
-	speech_spectrograms = [p[2] for p in preprocessed]
-	noise_spectrograms = [p[3] for p in preprocessed]
-
-	return (
-		np.concatenate(video_samples),
-		np.concatenate(mixed_spectrograms),
-		np.concatenate(speech_spectrograms),
-		np.concatenate(noise_spectrograms)
-	)
+	return samples
 
 
 class VideoNormalizer(object):
