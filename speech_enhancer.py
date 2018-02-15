@@ -284,22 +284,36 @@ def train_vocoder(args):
 	val_preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.val_data_name + '.npz')
 
 	with np.load(train_preprocessed_blob_path) as data:
-		OVERFIT_NUM = 15 # todo: remove
-		train_enhanced_spectrograms = data['enhanced_spectrograms'][:OVERFIT_NUM]
-		train_waveforms = data['source_waveforms'][:OVERFIT_NUM]
-		# train_enhanced_spectrograms = data['enhanced_spectrograms']
-		# train_waveforms = data['source_waveforms']
+		if args.number_of_samples:
+			train_enhanced_spectrograms = data['enhanced_spectrograms'][:args.number_of_samples]
+			train_waveforms = data['source_waveforms'][:args.number_of_samples]
+		else:
+			train_enhanced_spectrograms = data['enhanced_spectrograms']
+			train_waveforms = data['source_waveforms']
 
-	with np.load(val_preprocessed_blob_path) as data:
-		val_enhanced_spectrograms = data['enhanced_spectrograms']
-		val_waveforms = data['source_waveforms']
+	if args.number_of_samples:
+		val_enhanced_spectrograms = train_enhanced_spectrograms
+		val_waveforms = train_waveforms
+	else:
+		with np.load(val_preprocessed_blob_path) as data:
+			val_enhanced_spectrograms = data['enhanced_spectrograms']
+			val_waveforms = data['source_waveforms']
 
-	val_enhanced_spectrograms = train_enhanced_spectrograms
-	val_waveforms = train_waveforms
+	train_waveforms = np.c_[train_waveforms, np.zeros((train_waveforms.shape[0], 160))]  # todo: fix net size or label size
+	val_waveforms = np.c_[val_waveforms, np.zeros((val_waveforms.shape[0], 160))]
 
+	train_enhanced_spectrograms = np.concatenate(np.split(train_enhanced_spectrograms, 4, axis=2), axis=0)
+	train_waveforms = np.concatenate(np.split(train_waveforms, 4, axis=1), axis=0)
+	val_enhanced_spectrograms = np.concatenate(np.split(val_enhanced_spectrograms, 4, axis=2), axis=0)
+	val_waveforms = np.concatenate(np.split(val_waveforms, 4, axis=1), axis=0)
 
 	print 'building network...'
-	network = WavenetVocoder(80, 15, (train_enhanced_spectrograms.shape[1:]))
+	network = WavenetVocoder(num_upsample_channels=80,
+							 num_dilated_blocks=20,
+							 num_skip_channels=256,
+							 kernel_size=3,
+							 spec_shape=(train_enhanced_spectrograms.shape[1:]),
+							 gpus=args.gpus)
 	network.train(train_enhanced_spectrograms, train_waveforms, val_enhanced_spectrograms, val_waveforms, model_cache_dir)
 
 
@@ -314,17 +328,20 @@ def predict_vocoder(args):
 	network = WavenetVocoder.load(model_cache_dir)
 
 	with np.load(testset_path) as data:
-		OVERFIT_NUM = 15 # todo: remove
-		enhanced_spectrogarms = data['enhanced_spectrograms'][:OVERFIT_NUM]
-		source_waveforms = data['source_waveforms'][:OVERFIT_NUM]
+		if args.number_of_samples:
+			enhanced_spectrogarms = data['enhanced_spectrograms'][:args.number_of_samples]
+			source_waveforms = data['source_waveforms'][:args.number_of_samples]
+		else:
+			enhanced_spectrogarms = data['enhanced_spectrograms']
+			source_waveforms = data['source_waveforms']
 
 	for i in range(enhanced_spectrogarms.shape[0]):
 		wave_data = network.predict_one_sample(enhanced_spectrogarms[i][np.newaxis, ...])
 		enhanced_signal = AudioSignal(wave_data, 16000)
 		source_signal = AudioSignal(source_waveforms[i], 16000)
 
-		enhanced_signal.set_sample_type('int16')
-		source_signal.set_sample_type('int16')
+		enhanced_signal.set_sample_type(np.int16)
+		source_signal.set_sample_type(np.int16)
 
 		storage.save_vocoder_pred(enhanced_signal, source_signal, i)
 
@@ -438,12 +455,15 @@ def main():
 	train_parser.add_argument('-mn', '--model', type=str, required=True)
 	train_parser.add_argument('-tdn', '--train_data_names', nargs='+', type=str, required=True)
 	train_parser.add_argument('-vdn', '--val_data_names', nargs='+', type=str, required=True)
+	train_parser.add_argument('-g', '--gpus', type=int, default=1)
 	train_parser.set_defaults(func=train)
 
 	train_vocoder_parser = action_parsers.add_parser('train_vocoder')
 	train_vocoder_parser.add_argument('-mn', '--model', type=str, required=True)
 	train_vocoder_parser.add_argument('-tdn', '--train_data_name', type=str, required=True)
 	train_vocoder_parser.add_argument('-vdn', '--val_data_name', type=str, required=True)
+	train_vocoder_parser.add_argument('-ns', '--number_of_samples', type=int, required=True)
+	train_vocoder_parser.add_argument('-g', '--gpus', type=int, default=1)
 	train_vocoder_parser.set_defaults(func=train_vocoder)
 
 	predict_parser = action_parsers.add_parser('predict')
@@ -452,16 +472,20 @@ def main():
 	predict_parser.add_argument('-s', '--speakers', nargs='+', type=str, required=True)
 	predict_parser.add_argument('-is', '--ignored_speakers', nargs='+', type=str)
 	predict_parser.add_argument('-n', '--noise_dirs', nargs='+', type=str, required=True)
+	predict_parser.add_argument('-g', '--gpus', type=int, default=1)
 	predict_parser.set_defaults(func=predict)
 
 	predict_vocoder_parser = action_parsers.add_parser('predict_vocoder')
 	predict_vocoder_parser.add_argument('-mn', '--model', type=str, required=True)
 	predict_vocoder_parser.add_argument('-dn', '--data_name', type=str, required=True)
+	predict_vocoder_parser.add_argument('-ns', '--number_of_samples', type=int, default=0)
+	predict_vocoder_parser.add_argument('-g', '--gpus', type=int, default=1)
 	predict_vocoder_parser.set_defaults(func=predict_vocoder)
 
 	test_parser = action_parsers.add_parser('test')
 	test_parser.add_argument('-mn', '--model', type=str, required=True)
 	test_parser.add_argument('-p', '--paths', type=str, nargs='+', required=True)
+	test_parser.add_argument('-g', '--gpus', type=int, default=1)
 	test_parser.set_defaults(func=test, which='test')
 
 	args = parser.parse_args()
