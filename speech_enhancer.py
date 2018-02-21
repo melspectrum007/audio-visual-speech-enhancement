@@ -281,7 +281,8 @@ def train_vocoder(args):
 		os.mkdir(model_cache_dir)
 
 	train_preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.train_data_name + '.npz')
-	val_preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.val_data_name + '.npz')
+	if args.number_of_samples == 0:
+		val_preprocessed_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.val_data_name + '.npz')
 
 	with np.load(train_preprocessed_blob_path) as data:
 		if args.number_of_samples:
@@ -311,10 +312,10 @@ def train_vocoder(args):
 	network = WavenetVocoder(num_upsample_channels=80,
 							 num_dilated_blocks=20,
 							 num_skip_channels=256,
-							 kernel_size=3,
-							 spec_shape=(train_enhanced_spectrograms.shape[1:]),
-							 gpus=args.gpus)
-	network.train(train_enhanced_spectrograms, train_waveforms, val_enhanced_spectrograms, val_waveforms, model_cache_dir)
+							 kernel_size=2,
+							 spec_shape=(train_enhanced_spectrograms.shape[1], None),
+							 gpus=args.gpus, model_cache_dir=model_cache_dir)
+	network.train(train_enhanced_spectrograms, train_waveforms, val_enhanced_spectrograms, val_waveforms)
 
 
 def predict_vocoder(args):
@@ -334,6 +335,10 @@ def predict_vocoder(args):
 		else:
 			enhanced_spectrogarms = data['enhanced_spectrograms']
 			source_waveforms = data['source_waveforms']
+
+	# # todo remove, is here just because I messed us spectrogram shape in train_vocoder (should have been None in time axis)
+	# enhanced_spectrogarms = np.concatenate(np.split(enhanced_spectrogarms, 4, axis=2), axis=0)
+	# source_waveforms = np.concatenate(np.split(source_waveforms, 4, axis=1), axis=0)
 
 	for i in range(enhanced_spectrogarms.shape[0]):
 		wave_data = network.predict_one_sample(enhanced_spectrogarms[i][np.newaxis, ...])
@@ -461,7 +466,7 @@ def main():
 	train_vocoder_parser = action_parsers.add_parser('train_vocoder')
 	train_vocoder_parser.add_argument('-mn', '--model', type=str, required=True)
 	train_vocoder_parser.add_argument('-tdn', '--train_data_name', type=str, required=True)
-	train_vocoder_parser.add_argument('-vdn', '--val_data_name', type=str, required=True)
+	train_vocoder_parser.add_argument('-vdn', '--val_data_name', type=str)
 	train_vocoder_parser.add_argument('-ns', '--number_of_samples', type=int, required=True)
 	train_vocoder_parser.add_argument('-g', '--gpus', type=int, default=1)
 	train_vocoder_parser.set_defaults(func=train_vocoder)

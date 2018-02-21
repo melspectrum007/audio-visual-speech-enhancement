@@ -290,7 +290,10 @@ class ModelCache(object):
 		self.__cache_dir = cache_dir
 
 	def model_path(self):
-		return os.path.join(self.__cache_dir, "model.h5py")
+		return os.path.join(self.__cache_dir, 'model.h5py')
+
+	def model_backup_path(self):
+		return os.path.join(self.__cache_dir, 'model_backup.h5py')
 
 if __name__ == '__main__':
 	net = SpeechEnhancementNetwork.build((80, NUM_VIDEO_FRAMES * AUDIO_TO_VIDEO_RATIO), (128, 128, NUM_VIDEO_FRAMES))

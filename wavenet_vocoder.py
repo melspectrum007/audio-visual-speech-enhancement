@@ -4,15 +4,24 @@ import tensorflow as tf
 
 from keras.layers import *
 from keras.models import *
-from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
+from keras.callbacks import *
 from keras.utils import multi_gpu_model
 
 from network import ModelCache
 
 class WavenetVocoder(object):
 
-	def __init__(self, num_upsample_channels=None, num_dilated_blocks=None, num_skip_channels=None, spec_shape=None, kernel_size=2, gpus=1):
-		if num_upsample_channels is not None:
+	def __init__(
+			self, model_cache_dir=None,
+			num_upsample_channels=None,
+			num_dilated_blocks=None,
+			num_skip_channels=None,
+			spec_shape=None,
+			kernel_size=2,
+			gpus=1
+	):
+		if model_cache_dir is not None:
+			self.model_cache = ModelCache(model_cache_dir)
 			self.num_upsample_channels = num_upsample_channels
 			self.num_dilated_blocks = num_dilated_blocks
 			self.num_skip_channels = num_skip_channels
@@ -27,7 +36,6 @@ class WavenetVocoder(object):
 
 		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 2), padding='same')(extended)
 		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 2), padding='same')(x)
-		# x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 10), strides=(1, 10), padding='same')(x)
 
 		x = Lambda(lambda a: K.squeeze(a, axis=1))(x)
 
@@ -68,7 +76,7 @@ class WavenetVocoder(object):
 
 		skips = []
 		for i in range(self.num_dilated_blocks):
-			out, skip = self.build_dilated_conv_block((None, self.num_skip_channels), self.kernel_size, 2**(i % 10), self.num_skip_channels,
+			out, skip = self.build_dilated_conv_block((None, self.num_skip_channels), self.kernel_size, self.kernel_size**(i % 10), self.num_skip_channels,
 													  self.num_skip_channels, number=i+1)(out)
 			skips.append(skip)
 
@@ -98,61 +106,59 @@ class WavenetVocoder(object):
 
 		return model, fit_model
 
-	def train(self, train_enhanced_spectrograms, train_waveforms, val_enhanced_spectrograms, val_waveforms, model_cache_dir):
+	def train(self, train_enhanced_spectrograms, train_waveforms, val_enhanced_spectrograms, val_waveforms):
 		train_waveforms = mu_law_quantization(train_waveforms, 256, max_val=32768)
 		val_waveforms = mu_law_quantization(val_waveforms, 256, max_val=32768)
 
 		train_labels = one_hot_encoding(train_waveforms, 256)
 		val_labels = one_hot_encoding(val_waveforms, 256)
 
-		model_cache = ModelCache(model_cache_dir)
-
+		SaveModel = LambdaCallback(on_epoch_end=lambda epoch, logs: self.save_model())
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
-		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
+		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.005, patience=50, verbose=1)
 
 		self.__fit_model.fit(
 			x=[train_enhanced_spectrograms], y=[train_labels],
 			validation_data=([val_enhanced_spectrograms], [val_labels]),
-			batch_size=16, epochs=10000,
-			callbacks=[lr_decay, early_stopping],
+			batch_size=4 * self.gpus, epochs=10000,
+			callbacks=[lr_decay, early_stopping, SaveModel],
 			verbose=1
 		)
 
-	def predict_one_sample(self, enhanced_spectrogams):
-		logits = self.__model.predict(enhanced_spectrogams)
-		classes = np.argmax(logits, axis=1)
+	def predict_one_sample(self, enhanced_spectrogam):
+		probs = self.__model.predict(enhanced_spectrogam)
+		classes = np.argmax(probs, axis=1)
 		bins = np.linspace(-1, 1, 256 + 1)[:-1]
 		y = bins[classes]
 		norm_waveform = np.sign(y) * ((1 + 255) ** np.abs(y) - 1) / 255
 
 		return np.squeeze(norm_waveform) * 32768
 
-	# def predict_one_sample(self, enhanced_spectrograms):
-	# 	params = self.__model.predict(enhanced_spectrograms, batch_size=1)
-	# 	means = np.squeeze(params[:,:,:10])
-	# 	sigmas = np.exp(np.squeeze(np.abs(params[:,:,10:20])))
-	# 	weights_logits = np.squeeze(np.abs(params[:,:,20:]))
-	#
-	# 	weights = np.exp(weights_logits - log_sum_exp(weights_logits))
-	#
-	# 	column_indices = sample_many_categorical_once(weights)
-	# 	rows_indices = np.arange(means.shape[0])
-	#
-	# 	means = means[rows_indices, column_indices]
-	# 	sigmas = sigmas[rows_indices, column_indices]
-	#
-	# 	return np.random.logistic(means, sigmas) / 127.5
+
+	def evaluate_one_sample(self, enhanced_spectrogram, source_waveform):
+		source_waveform = one_hot_encoding(mu_law_quantization(source_waveform, 256, max_val=32768), 256)
+
+		return self.__model.evaluate(enhanced_spectrogram, )
+
+
+	def save_model(self):
+		try:
+			self.__model.save(self.model_cache.model_path())
+			self.__model.save(self.model_cache.model_backup_path())
+		except Exception as e:
+			print(e)
 
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
-		model = load_model(model_cache.model_path(), custom_objects={'tf':K})
+		model = load_model(model_cache.model_backup_path(), custom_objects={'tf':K})
 		vocoder = WavenetVocoder()
 		vocoder.__model = model
 
 		return vocoder
 
 def mu_law_quantization(x, mu, max_val=None):
+	x = x.astype('f')
 	if max_val is None:
 		max_val = np.abs(x).max()
 
@@ -169,6 +175,31 @@ def one_hot_encoding(y, num_classes):
 	one_hot[np.arange(one_hot.shape[0])[:, np.newaxis], y, np.arange(one_hot.shape[2])] = 1
 
 	return one_hot
+
+
+def log_sum_exp(x):
+	m = x.max()
+	return m + np.log(np.sum(np.exp(x - m)))
+
+if __name__ == '__main__':
+	net = WavenetVocoder(model_cache_dir='/tmp', num_upsample_channels=80, num_dilated_blocks=30, num_skip_channels=256, spec_shape=(80, None))
+
+
+# def predict_one_sample(self, enhanced_spectrograms):
+	# 	params = self.__model.predict(enhanced_spectrograms, batch_size=1)
+	# 	means = np.squeeze(params[:,:,:10])
+	# 	sigmas = np.exp(np.squeeze(np.abs(params[:,:,10:20])))
+	# 	weights_logits = np.squeeze(np.abs(params[:,:,20:]))
+	#
+	# 	weights = np.exp(weights_logits - log_sum_exp(weights_logits))
+	#
+	# 	column_indices = sample_many_categorical_once(weights)
+	# 	rows_indices = np.arange(means.shape[0])
+	#
+	# 	means = means[rows_indices, column_indices]
+	# 	sigmas = sigmas[rows_indices, column_indices]
+	#
+	# 	return np.random.logistic(means, sigmas) / 127.5
 
 
 # def loss(y_true, y_pred):
@@ -198,12 +229,3 @@ def one_hot_encoding(y, num_classes):
 # 	indices = (cdf <= uniform[:, np.newaxis]).argmin(-1)
 #
 # 	return np.squeeze(indices)
-
-def log_sum_exp(x):
-	m = x.max()
-	return m + np.log(np.sum(np.exp(x - m)))
-
-if __name__ == '__main__':
-	net = WavenetVocoder(num_upsample_channels=80, num_dilated_blocks=30, num_skip_channels=256, spec_shape=(80, 20))
-
-
