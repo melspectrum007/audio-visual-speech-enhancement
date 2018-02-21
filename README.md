@@ -60,7 +60,7 @@ speech_enhancer.py train
 Finally, enhance the test noisy speech samples by:
 ```
 speech_enhancer.py predict
-    --preprocessed_blob_paths <paths-to-preprocessed-test-data>
+	--preprocessed_blob_paths <paths-to-preprocessed-test-data>
 	--model_cache_dir <path-to-saved-model>
 	--normalization_cache <path-to-saved-normalization-data>
 	--prediction_output_dir <path-to-output-predictions>
