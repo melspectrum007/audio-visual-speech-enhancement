@@ -37,9 +37,9 @@ Given an audio-visual dataset of the directory structure:
 ```
 and noise directory contains audio files (*.wav) of noise samples, do the following steps.
 
-Preprocess both train and validation datasets by:
+Preprocess train, validation and test datasets separately by:
 ```
-speech_enhancer.py preprocess 
+speech_enhancer.py preprocess
 	--dataset_dir <path-to-dataset>
 	--noise_dirs <path-to-noise-dir> ...
 	--preprocessed_blob_path <path-to-preprocessed-output-file>
@@ -57,16 +57,13 @@ speech_enhancer.py train
 	--tensorboard_dir <path-to-save-tensorboard-stats>
 ```
 
-Finally, enhance new noisy speech samples by:
+Finally, enhance the test noisy speech samples by:
 ```
 speech_enhancer.py predict
-	--dataset_dir <path-to-dataset>
-	--noise_dirs <path-to-noise-dir> ...
+    --preprocessed_blob_paths <paths-to-preprocessed-test-data>
 	--model_cache_dir <path-to-saved-model>
 	--normalization_cache <path-to-saved-normalization-data>
 	--prediction_output_dir <path-to-output-predictions>
-	[--speakers <speaker-id> ...]
-	[--ignored_speakers <speaker-id> ...]
 ```
 
 ## Citing
