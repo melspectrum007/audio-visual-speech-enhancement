@@ -2,6 +2,7 @@ import numpy as np
 import keras.backend as K
 import tensorflow as tf
 
+
 from keras.layers import *
 from keras.models import *
 from keras.callbacks import *
@@ -34,12 +35,13 @@ class WavenetVocoder(object):
 		permuted = Permute((2, 1))(layer_input)
 		extended = Lambda(lambda a: K.expand_dims(a, axis=1))(permuted)
 
-		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 2), padding='same')(extended)
-		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 2), padding='same')(x)
+		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 4), padding='same')(extended)
+		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 4), padding='same')(x)
+		x = Deconv2D(self.num_upsample_channels, kernel_size=(1, 2), strides=(1, 10), padding='same')(x)
 
 		x = Lambda(lambda a: K.squeeze(a, axis=1))(x)
 
-		x = UpSampling1D(size=40)(x)
+		# x = UpSampling1D(size=40)(x)
 
 		model = Model(layer_input, x, name='Upsample_Net')
 		model.summary()
@@ -51,10 +53,13 @@ class WavenetVocoder(object):
 
 		filters = Conv1D(num_dilated_filters, kernel_size, padding='same', dilation_rate=dilation, activation='tanh')(layer_input)
 		gate = Conv1D(num_dilated_filters, kernel_size, padding='same', dilation_rate=dilation, activation='sigmoid')(layer_input)
+		prod = Multiply()([filters, gate])
 
-		skip = Conv1D(num_skip_filters, kernel_size=1, padding='same')(Multiply()([filters, gate]))
 
-		output = Add()([layer_input, skip])
+		skip = Conv1D(num_skip_filters, kernel_size=1, padding='same')(prod)
+		residual = Conv1D(num_skip_filters, kernel_size=1, padding='same')(prod)
+
+		output = Add()([layer_input, residual])
 
 		if number:
 			name = 'dilated_block_' + str(number)
@@ -80,11 +85,12 @@ class WavenetVocoder(object):
 													  self.num_skip_channels, number=i+1)(out)
 			skips.append(skip)
 
+		skips.append(out)
 		stack = Add()(skips)
-		stack = Activation('relu')(stack)
+		stack = Activation('tanh')(stack)
 
 		stack = Conv1D(256, 1)(stack)
-		stack = Activation('relu')(stack)
+		stack = Activation('tanh')(stack)
 		stack = Conv1D(256, 1)(stack)
 		probs = Activation('softmax')(stack)
 		probs = Permute((2,1))(probs)
@@ -98,6 +104,7 @@ class WavenetVocoder(object):
 		else:
 			model = Model(spectrogram, outputs=[probs], name='Vocoder')
 			fit_model = model
+
 
 		fit_model.compile(loss='categorical_crossentropy', optimizer=optimizer)
 
@@ -116,16 +123,39 @@ class WavenetVocoder(object):
 		SaveModel = LambdaCallback(on_epoch_end=lambda epoch, logs: self.save_model())
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.005, patience=50, verbose=1)
+		tensorboard = TensorBoard(log_dir=self.model_cache.tensorboard_path(),
+								  histogram_freq=10,
+								  batch_size=1 * self.gpus,
+								  write_graph=False,
+								  write_grads=True)
 
 		self.__fit_model.fit(
 			x=[train_enhanced_spectrograms], y=[train_labels],
 			validation_data=([val_enhanced_spectrograms], [val_labels]),
-			batch_size=4 * self.gpus, epochs=10000,
-			callbacks=[lr_decay, early_stopping, SaveModel],
+			batch_size=1 * self.gpus, epochs=100000,
+			callbacks=[lr_decay, early_stopping, SaveModel, tensorboard],
 			verbose=1
 		)
 
-	def predict_one_sample(self, enhanced_spectrogam):
+	def predict_one_sample(self, enhanced_spectrogam, source_waveform=None):
+
+		# source_waveform = one_hot_encoding(mu_law_quantization(source_waveform, 256, 32768), 256)
+		#
+		# self.__model.compile(optimizers.adam(lr=5e-4), 'categorical_crossentropy')
+		# loss = self.__model.evaluate(enhanced_spectrogam, source_waveform)
+		# print loss
+
+		# for layer in self.__model.layers:
+		# 	print layer.name
+		# 	# temp_model = Model(inputs=self.__model.input, outputs=layer.get_output_at(0))
+		# 	# layer_output = temp_model.predict(enhanced_spectrogam)
+		# 	# print layer_output
+		# 	w = layer.get_weights()
+		# 	print w
+		#
+		# print 'whoa!'
+
+
 		probs = self.__model.predict(enhanced_spectrogam)
 		classes = np.argmax(probs, axis=1)
 		bins = np.linspace(-1, 1, 256 + 1)[:-1]
@@ -135,10 +165,12 @@ class WavenetVocoder(object):
 		return np.squeeze(norm_waveform) * 32768
 
 
-	def evaluate_one_sample(self, enhanced_spectrogram, source_waveform):
-		source_waveform = one_hot_encoding(mu_law_quantization(source_waveform, 256, max_val=32768), 256)
-
-		return self.__model.evaluate(enhanced_spectrogram, )
+	# def evaluate_one_sample(self, enhanced_spectrogram, source_waveform):
+	# 	source_waveform = one_hot_encoding(mu_law_quantization(source_waveform, 256, max_val=32768), 256)
+	#
+	# 	loss = self.__model.evaluate(enhanced_spectrogram, source_waveform)
+	# 	print loss
+	# 	return loss
 
 
 	def save_model(self):

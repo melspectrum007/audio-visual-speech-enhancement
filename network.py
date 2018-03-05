@@ -1,5 +1,6 @@
 import os
 
+from datetime import datetime
 from keras import optimizers
 from keras.layers import *
 
@@ -294,6 +295,9 @@ class ModelCache(object):
 
 	def model_backup_path(self):
 		return os.path.join(self.__cache_dir, 'model_backup.h5py')
+
+	def tensorboard_path(self):
+		return os.path.join(self.__cache_dir, 'tensorboard', datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
 
 if __name__ == '__main__':
 	net = SpeechEnhancementNetwork.build((80, NUM_VIDEO_FRAMES * AUDIO_TO_VIDEO_RATIO), (128, 128, NUM_VIDEO_FRAMES))

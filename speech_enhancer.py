@@ -13,7 +13,8 @@ from datetime import datetime
 from mediaio.video_io import VideoFileReader
 from mediaio.audio_io import AudioSignal
 
-BASE_FOLDER = '/cs/labs/peleg/asaph/playground/audio-visual-speech-enhancement' # todo: remove before releasing code
+BASE_FOLDER = '/cs/labs/peleg/asaph/playground/avse' # todo: remove before releasing code
+SPLIT = 8
 
 def preprocess(args):
 	dataset_path = os.path.join(args.base_folder, 'data', args.dataset)
@@ -223,40 +224,41 @@ def test(args):
 
 
 def generate_vocoder_dataset(args):
-	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
-	normalization_path = os.path.join(model_cache_dir, 'normalization.pkl')
+	# model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
+	# normalization_path = os.path.join(model_cache_dir, 'normalization.pkl')
 	train_preprocessed_blob_paths = os.path.join(args.base_folder, 'cache/preprocessed', args.train_data_name + '.npz')
 	vocoder_train_blob_path = os.path.join(args.base_folder, 'cache/preprocessed', args.train_data_name + '-vocoder-' + args.model + '.npz')
 
-	network = SpeechEnhancementNetwork.load(model_cache_dir)
-	with open(normalization_path, 'rb') as normalization_fd:
-		video_normalizer = pickle.load(normalization_fd)
+	# network = SpeechEnhancementNetwork.load(model_cache_dir)
+	# with open(normalization_path, 'rb') as normalization_fd:
+	# 	video_normalizer = pickle.load(normalization_fd)
 
 	dataProcessor = utils.DataProcessor(args.frames_per_second, args.sampling_rate)
 
 	train_video_samples, train_mixed_spectrograms, train_source_spectrograms, train_source_phases = load_preprocessed_samples(
-		[train_preprocessed_blob_paths], max_samples=None
+		[train_preprocessed_blob_paths], max_samples=20
 	)
 
 	vocoder_train_enhanced_spectrograms = []
 	vocoder_train_source_waveforms = []
 	for i in range(train_video_samples.shape[0]):
-		video_samples = train_video_samples[i]
-		video_normalizer.normalize(video_samples)
-		mixed_spectrograms = train_mixed_spectrograms[i]
+		# video_samples = train_video_samples[i]
+		# video_normalizer.normalize(video_samples)
+		# mixed_spectrograms = train_mixed_spectrograms[i]
 
-		enhanced_spectrograms = network.predict(mixed_spectrograms, video_samples)
-		enhanced_spectrogram = np.concatenate(list(enhanced_spectrograms), axis=1)
+		# enhanced_spectrograms = network.predict(mixed_spectrograms, video_samples)
+		# enhanced_spectrogram = np.concatenate(list(enhanced_spectrograms), axis=1)
 
 		source_spectrograms = train_source_spectrograms[i]
 		source_phase = train_source_phases[i]
 
 		source_spectrogram = np.concatenate(list(source_spectrograms), axis=1)
-		source_spectrogram = dataProcessor.recover_linear_spectrogram(source_spectrogram)
+		linear_source_spectrogram = dataProcessor.recover_linear_spectrogram(source_spectrogram)
 
-		waveform = dataProcessor.reconstruct_waveform_data(source_spectrogram, source_phase)
+		waveform = dataProcessor.reconstruct_waveform_data(linear_source_spectrogram, source_phase)
 
-		vocoder_train_enhanced_spectrograms.append(enhanced_spectrogram)
+		# vocoder_train_enhanced_spectrograms.append(enhanced_spectrogram)
+		vocoder_train_enhanced_spectrograms.append(source_spectrogram)
 		vocoder_train_source_waveforms.append(waveform)
 
 	vocoder_train_enhanced_spectrograms = np.stack(vocoder_train_enhanced_spectrograms)
@@ -303,14 +305,14 @@ def train_vocoder(args):
 	train_waveforms = np.c_[train_waveforms, np.zeros((train_waveforms.shape[0], 160))]  # todo: fix net size or label size
 	val_waveforms = np.c_[val_waveforms, np.zeros((val_waveforms.shape[0], 160))]
 
-	train_enhanced_spectrograms = np.concatenate(np.split(train_enhanced_spectrograms, 4, axis=2), axis=0)
-	train_waveforms = np.concatenate(np.split(train_waveforms, 4, axis=1), axis=0)
-	val_enhanced_spectrograms = np.concatenate(np.split(val_enhanced_spectrograms, 4, axis=2), axis=0)
-	val_waveforms = np.concatenate(np.split(val_waveforms, 4, axis=1), axis=0)
+	train_enhanced_spectrograms = np.concatenate(np.split(train_enhanced_spectrograms, SPLIT, axis=2), axis=0)
+	train_waveforms = np.concatenate(np.split(train_waveforms, SPLIT, axis=1), axis=0)
+	val_enhanced_spectrograms = np.concatenate(np.split(val_enhanced_spectrograms, SPLIT, axis=2), axis=0)
+	val_waveforms = np.concatenate(np.split(val_waveforms, SPLIT, axis=1), axis=0)
 
 	print 'building network...'
 	network = WavenetVocoder(num_upsample_channels=80,
-							 num_dilated_blocks=20,
+							 num_dilated_blocks=30,
 							 num_skip_channels=256,
 							 kernel_size=2,
 							 spec_shape=(train_enhanced_spectrograms.shape[1], None),
