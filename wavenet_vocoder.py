@@ -81,16 +81,16 @@ class WavenetVocoder(object):
 
 		skips = []
 		for i in range(self.num_dilated_blocks):
-			out, skip = self.build_dilated_conv_block((None, self.num_skip_channels), self.kernel_size, self.kernel_size**(i % 10), self.num_skip_channels,
+			out, skip = self.build_dilated_conv_block((None, self.num_skip_channels), self.kernel_size, 2**(i % 10), self.num_skip_channels,
 													  self.num_skip_channels, number=i+1)(out)
 			skips.append(skip)
 
 		skips.append(out)
 		stack = Add()(skips)
-		stack = Activation('tanh')(stack)
+		stack = Activation('relu')(stack)
 
 		stack = Conv1D(256, 1)(stack)
-		stack = Activation('tanh')(stack)
+		stack = Activation('relu')(stack)
 		stack = Conv1D(256, 1)(stack)
 		probs = Activation('softmax')(stack)
 		probs = Permute((2,1))(probs)
