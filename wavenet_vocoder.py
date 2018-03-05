@@ -160,7 +160,7 @@ class WavenetVocoder(object):
 								  write_graph=False,
 								  write_grads=True)
 
-		fake_out_label = np.random.rand(train_waveforms.shape[1], self.num_skip_channels) # ables me ignoring 'out' in the net
+		fake_out_label = np.empty([train_waveforms.shape[1], self.num_skip_channels]) # ables me ignoring 'out' in the net
 
 		self.__fit_model.fit(
 			x=[train_enhanced_spectrograms, train_waveforms], y=[train_labels, fake_out_label],

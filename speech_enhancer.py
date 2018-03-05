@@ -32,7 +32,7 @@ def preprocess(args):
 		dataset_path, speaker_ids, args.noise_dirs, max_files=1500
 	)
 
-	video_samples, mixed_spectrograms, source_spectrograms, source_phases = utils.preprocess_data(
+	video_samples, mixed_spectrograms, mixed_phases, source_spectrograms, source_phases = utils.preprocess_data(
 		video_file_paths, source_file_paths, noise_file_paths
 	)
 
@@ -40,6 +40,7 @@ def preprocess(args):
 		preprocessed_blob_path,
 		video_samples=video_samples,
 		mixed_spectrograms=mixed_spectrograms,
+		mixed_phases=mixed_phases,
 		source_spectrograms=source_spectrograms,
 		source_phases=source_phases,
 	)
