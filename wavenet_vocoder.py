@@ -78,7 +78,8 @@ class WavenetVocoder(object):
 		else:
 			model = Model(inputs=[layer_input, conditioning_input], outputs=[output, skip])
 
-		if number == 0:
+		if number == 1:
+			print 'Dilated Conv Block'
 			model.summary()
 
 		return model
