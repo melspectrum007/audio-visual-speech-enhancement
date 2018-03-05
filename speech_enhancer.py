@@ -314,6 +314,7 @@ def train_vocoder(args):
 	network = WavenetVocoder(num_upsample_channels=80,
 							 num_dilated_blocks=30,
 							 num_skip_channels=256,
+							 num_conditioning_channels=10,
 							 kernel_size=2,
 							 spec_shape=(train_enhanced_spectrograms.shape[1], None),
 							 gpus=args.gpus, model_cache_dir=model_cache_dir)
