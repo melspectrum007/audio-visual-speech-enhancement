@@ -87,10 +87,10 @@ class WavenetVocoder(object):
 
 		skips.append(out)
 		stack = Add()(skips)
-		stack = Activation('relu')(stack)
+		stack = Activation('tanh')(stack)
 
 		stack = Conv1D(256, 1)(stack)
-		stack = Activation('relu')(stack)
+		stack = Activation('tanh')(stack)
 		stack = Conv1D(256, 1)(stack)
 		probs = Activation('softmax')(stack)
 		probs = Permute((2,1))(probs)
