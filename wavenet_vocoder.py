@@ -148,8 +148,8 @@ class WavenetVocoder(object):
 		train_waveforms = mu_law_quantization(train_waveforms, 256, max_val=32768)
 		val_waveforms = mu_law_quantization(val_waveforms, 256, max_val=32768)
 
-		train_labels = one_hot_encoding(train_waveforms, 256)
-		val_labels = one_hot_encoding(val_waveforms, 256)
+		train_labels = one_hot_encoding(np.roll(train_waveforms, -1), 256)
+		val_labels = one_hot_encoding(np.roll(val_waveforms, -1), 256)
 
 		SaveModel = LambdaCallback(on_epoch_end=lambda epoch, logs: self.save_model())
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
@@ -163,8 +163,8 @@ class WavenetVocoder(object):
 		fake_out_label = np.random.rand(train_waveforms.shape[1], self.num_skip_channels) # ables me ignoring 'out' in the net
 
 		self.__fit_model.fit(
-			x=[train_enhanced_spectrograms], y=[train_labels, fake_out_label],
-			validation_data=([val_enhanced_spectrograms], [val_labels, fake_out_label]),
+			x=[train_enhanced_spectrograms, train_waveforms], y=[train_labels, fake_out_label],
+			validation_data=([val_enhanced_spectrograms, val_waveforms], [val_labels, fake_out_label]),
 			batch_size=1 * self.gpus, epochs=100000,
 			callbacks=[lr_decay, early_stopping, SaveModel, tensorboard],
 			verbose=1

@@ -2,7 +2,6 @@
 import argparse, os, logging, pickle
 import numpy as np
 import utils
-import data_processor as dp
 
 from dataset import AudioVisualDataset, AudioDataset
 from network import SpeechEnhancementNetwork
@@ -116,7 +115,7 @@ def train(args):
 	val_source_spectrograms = val_source_spectrograms.reshape(-1, freq, bins)
 
 	print 'normalizing video samples...'
-	video_normalizer = dp.VideoNormalizer(train_video_samples)
+	video_normalizer = utils.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(val_video_samples)
 
