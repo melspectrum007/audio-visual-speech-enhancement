@@ -41,10 +41,10 @@ Preprocess train, validation and test datasets separately by:
 ```
 speech_enhancer.py --base_dir <output-dir-path> preprocess
     --data_name <preprocessed-data-name>
-	--dataset_dir <dataset-dir-path>
-	--noise_dirs <noise-dir-path> ...
-	[--speakers <speaker-id> ...]
-	[--ignored_speakers <speaker-id> ...] 
+    --dataset_dir <dataset-dir-path>
+    --noise_dirs <noise-dir-path> ...
+    [--speakers <speaker-id> ...]
+    [--ignored_speakers <speaker-id> ...] 
 ```
 
 Then, train the model by:
@@ -53,7 +53,7 @@ speech_enhancer.py --base_dir <output-dir-path> train
     --model <model-name>
     --train_data_names <preprocessed-training-data-name> ...
     --validation_data_names <preprocessed-validation-data-name> ...
-    --gpus <num-of-gpus>
+    [--gpus <num-of-gpus>]
 ```
 
 Finally, enhance the test noisy speech samples by:
@@ -61,7 +61,7 @@ Finally, enhance the test noisy speech samples by:
 speech_enhancer.py --base_dir <output-dir-path> predict
     --model <model-name>
     --data_name <preprocessed-test-data-name>
-    --gpus <num-of-gpus>
+    [--gpus <num-of-gpus>]
 ```
 
 ## Citing
