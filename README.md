@@ -39,31 +39,29 @@ and noise directory contains audio files (*.wav) of noise samples, do the follow
 
 Preprocess train, validation and test datasets separately by:
 ```
-speech_enhancer.py preprocess
-	--dataset_dir <path-to-dataset>
-	--noise_dirs <path-to-noise-dir> ...
-	--preprocessed_blob_path <path-to-preprocessed-output-file>
+speech_enhancer.py --base_dir <output-dir-path> preprocess
+    --data_name <preprocessed-data-name>
+	--dataset_dir <dataset-dir-path>
+	--noise_dirs <noise-dir-path> ...
 	[--speakers <speaker-id> ...]
 	[--ignored_speakers <speaker-id> ...] 
 ```
 
 Then, train the model by:
 ```
-speech_enhancer.py train
-	--train_preprocessed_blob_paths <path-to-preprocessed-training-data> ...
-	--validation_preprocessed_blob_paths <path-to-preprocessed-validation-data> ...
-	--normalization_cache <path-to-save-normalization-data>
-	--model_cache_dir <path-to-save-model>
-	--tensorboard_dir <path-to-save-tensorboard-stats>
+speech_enhancer.py --base_dir <output-dir-path> train
+    --model <model-name>
+    --train_data_names <preprocessed-training-data-name> ...
+    --validation_data_names <preprocessed-validation-data-name> ...
+    --gpus <num-of-gpus>
 ```
 
 Finally, enhance the test noisy speech samples by:
 ```
-speech_enhancer.py predict
-	--preprocessed_blob_paths <path-to-preprocessed-test-data> ...
-	--model_cache_dir <path-to-saved-model>
-	--normalization_cache <path-to-saved-normalization-data>
-	--prediction_output_dir <path-to-output-predictions>
+speech_enhancer.py --base_dir <output-dir-path> predict
+    --model <model-name>
+    --data_name <preprocessed-test-data-name>
+    --gpus <num-of-gpus>
 ```
 
 ## Citing

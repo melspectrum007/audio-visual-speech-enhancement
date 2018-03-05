@@ -178,7 +178,7 @@ class SpeechEnhancementNetwork(object):
 
 	def train(self, train_mixed_spectrograms, train_video_samples, train_speech_spectrograms,
 			  validation_mixed_spectrograms, validation_video_samples, validation_speech_spectrograms,
-			  model_cache_dir, tensorboard_dir):
+			  model_cache_path, tensorboard_dir):
 
 		train_mixed_spectrograms = np.expand_dims(train_mixed_spectrograms, -1)  # append channels axis
 		train_speech_spectrograms = np.expand_dims(train_speech_spectrograms, -1)  # append channels axis
@@ -186,8 +186,7 @@ class SpeechEnhancementNetwork(object):
 		validation_mixed_spectrograms = np.expand_dims(validation_mixed_spectrograms, -1)  # append channels axis
 		validation_speech_spectrograms = np.expand_dims(validation_speech_spectrograms, -1)  # append channels axis
 
-		model_cache = ModelCache(model_cache_dir)
-		checkpoint = ModelCheckpoint(model_cache.model_path(), verbose=1)
+		checkpoint = ModelCheckpoint(model_cache_path, verbose=1)
 
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
@@ -223,22 +222,10 @@ class SpeechEnhancementNetwork(object):
 		return loss
 
 	@staticmethod
-	def load(model_cache_dir):
-		model_cache = ModelCache(model_cache_dir)
-		model = load_model(model_cache.model_path())
+	def load(model_cache_path):
+		model = load_model(model_cache_path)
 
 		return SpeechEnhancementNetwork(model)
 
-	def save(self, model_cache_dir):
-		model_cache = ModelCache(model_cache_dir)
-
-		self.__model.save(model_cache.model_path())
-
-
-class ModelCache(object):
-
-	def __init__(self, cache_dir):
-		self.__cache_dir = cache_dir
-
-	def model_path(self):
-		return os.path.join(self.__cache_dir, "model.h5py")
+	def save(self, model_cache_path):
+		self.__model.save(model_cache_path)
