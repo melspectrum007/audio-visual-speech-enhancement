@@ -17,6 +17,7 @@ class WavenetVocoder(object):
 			num_upsample_channels=None,
 			num_dilated_blocks=None,
 			num_skip_channels=None,
+			num_conditioning_channels=None,
 			spec_shape=None,
 			kernel_size=2,
 			gpus=1
@@ -26,6 +27,7 @@ class WavenetVocoder(object):
 			self.num_upsample_channels = num_upsample_channels
 			self.num_dilated_blocks = num_dilated_blocks
 			self.num_skip_channels = num_skip_channels
+			self.num_conditioning_channels = num_conditioning_channels
 			self.kernel_size = kernel_size
 			self.gpus = gpus
 			self.__model, self.__fit_model = self.build(spec_shape)
@@ -48,13 +50,22 @@ class WavenetVocoder(object):
 		return model
 
 	@staticmethod
-	def build_dilated_conv_block(input_shape, kernel_size, dilation, num_dilated_filters, num_skip_filters, number=None):
-		layer_input = Input(input_shape)
+	def build_dilated_conv_block(layer_input_shape, conditioning_input_shape, kernel_size, dilation, num_dilated_filters, num_skip_filters,
+								 number=None):
+		layer_input = Input(layer_input_shape)
+		conditioning_input = Input(conditioning_input_shape)
 
-		filters = Conv1D(num_dilated_filters, kernel_size, padding='same', dilation_rate=dilation, activation='tanh')(layer_input)
-		gate = Conv1D(num_dilated_filters, kernel_size, padding='same', dilation_rate=dilation, activation='sigmoid')(layer_input)
+		waveform_filter = Conv1D(num_dilated_filters, kernel_size, padding='same', dilation_rate=dilation)(layer_input)
+		conditioning_filter = Conv1D(num_dilated_filters, 1, padding='same')(conditioning_input)
+		filters = Add()([waveform_filter, conditioning_filter])
+		filters = Activation('tanh')(filters)
+
+		waveform_gate = Conv1D(num_dilated_filters, kernel_size, padding='same', dilation_rate=dilation)(layer_input)
+		conditioning_gate = Conv1D(num_dilated_filters, 1, padding='same')(conditioning_input)
+		gate = Add()([waveform_gate, conditioning_gate])
+		gate = Activation('sigmoid')(gate)
+
 		prod = Multiply()([filters, gate])
-
 
 		skip = Conv1D(num_skip_filters, kernel_size=1, padding='same')(prod)
 		residual = Conv1D(num_skip_filters, kernel_size=1, padding='same')(prod)
@@ -63,34 +74,53 @@ class WavenetVocoder(object):
 
 		if number:
 			name = 'dilated_block_' + str(number)
-			model = Model(layer_input, outputs=[output, skip], name=name)
+			model = Model(inputs=[layer_input, conditioning_input], outputs=[output, skip], name=name)
 		else:
-			model = Model(layer_input, outputs=[output, skip])
+			model = Model(inputs=[layer_input, conditioning_input], outputs=[output, skip])
 
+		if number == 0:
+			model.summary()
 
 		return model
 
 	def build(self, spec_shape):
-
 		spectrogram = Input(spec_shape)
+		waveform_input = Input((None, 1))
+
 
 		upsample_net = self.build_upsample_net(spec_shape)
 
-		out = upsample_net(spectrogram)
-		out = Conv1D(self.num_skip_channels, 1)(out)
+		conditioning = upsample_net(spectrogram)
+		conditioning = Conv1D(self.num_conditioning_channels, 1)(conditioning)
 
 		skips = []
 		for i in range(self.num_dilated_blocks):
-			out, skip = self.build_dilated_conv_block((None, self.num_skip_channels), self.kernel_size, self.kernel_size**(i % 10), self.num_skip_channels,
-													  self.num_skip_channels, number=i+1)(out)
+			if i == 0:
+				block = self.build_dilated_conv_block(layer_input_shape=(None, 1),
+													  conditioning_input_shape=(None, self.num_conditioning_channels),
+													  kernel_size=self.kernel_size,
+													  dilation=2**(i % 10),
+													  num_dilated_filters=self.num_skip_channels,
+													  num_skip_filters=self.num_skip_channels,
+													  number=i+1)
+				layer_input, skip = block(inputs=[waveform_input, conditioning])
+			else:
+				block = self.build_dilated_conv_block(layer_input_shape=(None, self.num_skip_channels),
+													  conditioning_input_shape=(None, self.num_conditioning_channels),
+													  kernel_size=self.kernel_size,
+													  dilation=2**(i % 10),
+													  num_dilated_filters=self.num_skip_channels,
+													  num_skip_filters=self.num_skip_channels,
+													  number=i+1)
+				layer_input, skip = block(inputs=[layer_input, conditioning])
+
 			skips.append(skip)
 
-		skips.append(out)
 		stack = Add()(skips)
-		stack = Activation('tanh')(stack)
+		stack = Activation('relu')(stack)
 
 		stack = Conv1D(256, 1)(stack)
-		stack = Activation('tanh')(stack)
+		stack = Activation('relu')(stack)
 		stack = Conv1D(256, 1)(stack)
 		probs = Activation('softmax')(stack)
 		probs = Permute((2,1))(probs)
@@ -99,14 +129,14 @@ class WavenetVocoder(object):
 
 		if self.gpus > 1:
 			with tf.device('/cpu:0'):
-				model = Model(spectrogram, outputs=[probs], name='Vocoder')
+				model = Model(inputs=[spectrogram, waveform_input], outputs=[probs, layer_input], name='Vocoder')
 				fit_model = multi_gpu_model(model, gpus=self.gpus)
 		else:
-			model = Model(spectrogram, outputs=[probs], name='Vocoder')
+			model = Model(inputs=[spectrogram, waveform_input], outputs=[probs, layer_input], name='Vocoder')
 			fit_model = model
 
 
-		fit_model.compile(loss='categorical_crossentropy', optimizer=optimizer)
+		fit_model.compile(loss=['categorical_crossentropy', 'mean_squared_error'], optimizer=optimizer, loss_weights=[1., 0.])
 
 		print 'Vocoder'
 		model.summary()
@@ -129,9 +159,11 @@ class WavenetVocoder(object):
 								  write_graph=False,
 								  write_grads=True)
 
+		fake_out_label = np.random.rand(train_waveforms.shape[1], self.num_skip_channels) # ables me ignoring 'out' in the net
+
 		self.__fit_model.fit(
-			x=[train_enhanced_spectrograms], y=[train_labels],
-			validation_data=([val_enhanced_spectrograms], [val_labels]),
+			x=[train_enhanced_spectrograms], y=[train_labels, fake_out_label],
+			validation_data=([val_enhanced_spectrograms], [val_labels, fake_out_label]),
 			batch_size=1 * self.gpus, epochs=100000,
 			callbacks=[lr_decay, early_stopping, SaveModel, tensorboard],
 			verbose=1
@@ -214,7 +246,12 @@ def log_sum_exp(x):
 	return m + np.log(np.sum(np.exp(x - m)))
 
 if __name__ == '__main__':
-	net = WavenetVocoder(model_cache_dir='/tmp', num_upsample_channels=80, num_dilated_blocks=30, num_skip_channels=256, spec_shape=(80, None))
+	net = WavenetVocoder(model_cache_dir='/tmp',
+						 num_upsample_channels=80,
+						 num_dilated_blocks=20,
+						 num_skip_channels=16,
+						 num_conditioning_channels=10,
+						 spec_shape=(80, None))
 
 
 # def predict_one_sample(self, enhanced_spectrograms):
