@@ -10,6 +10,8 @@ from keras.utils import multi_gpu_model
 
 from network import ModelCache
 
+BATCH_SIZE = 1
+
 class WavenetVocoder(object):
 
 	def __init__(
@@ -151,21 +153,25 @@ class WavenetVocoder(object):
 		train_labels = one_hot_encoding(np.roll(train_waveforms, -1), 256)
 		val_labels = one_hot_encoding(np.roll(val_waveforms, -1), 256)
 
+		train_waveforms = np.expand_dims(train_waveforms, -1)
+		val_waveforms = np.expand_dims(val_waveforms, -1)
+
 		SaveModel = LambdaCallback(on_epoch_end=lambda epoch, logs: self.save_model())
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.005, patience=50, verbose=1)
 		tensorboard = TensorBoard(log_dir=self.model_cache.tensorboard_path(),
 								  histogram_freq=10,
-								  batch_size=1 * self.gpus,
+								  batch_size=BATCH_SIZE * self.gpus,
 								  write_graph=False,
 								  write_grads=True)
 
-		fake_out_label = np.empty([train_waveforms.shape[1], self.num_skip_channels]) # ables me ignoring 'out' in the net
+		train_fake_out_label = np.empty(train_waveforms.shape[:2] + (self.num_skip_channels,)) # ables me ignoring 'out' in the net
+		val_fake_out_label = np.empty(val_waveforms.shape[:2] + (self.num_skip_channels,)) # ables me ignoring 'out' in the net
 
 		self.__fit_model.fit(
-			x=[train_enhanced_spectrograms, train_waveforms], y=[train_labels, fake_out_label],
-			validation_data=([val_enhanced_spectrograms, val_waveforms], [val_labels, fake_out_label]),
-			batch_size=1 * self.gpus, epochs=100000,
+			x=[train_enhanced_spectrograms, train_waveforms], y=[train_labels, train_fake_out_label],
+			validation_data=([val_enhanced_spectrograms, val_waveforms], [val_labels, val_fake_out_label]),
+			batch_size=BATCH_SIZE * self.gpus, epochs=100000,
 			callbacks=[lr_decay, early_stopping, SaveModel, tensorboard],
 			verbose=1
 		)
