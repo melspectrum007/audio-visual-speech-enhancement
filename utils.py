@@ -120,6 +120,7 @@ class DataProcessor(object):
 	def reconstruct_waveform_data(self, spectrogram, phase):
 		return lb.istft(spectrogram * phase, self.hop)
 
+
 def get_frames(video_path):
 	with VideoFileReader(video_path) as reader:
 		return reader.read_all_frames(convert_to_gray_scale=True)
