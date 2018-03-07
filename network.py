@@ -12,12 +12,13 @@ import keras.backend as K
 import tensorflow as tf
 import numpy as np
 
-NUM_VIDEO_FRAMES = 5
 AUDIO_TO_VIDEO_RATIO = 4
+BATCH_SIZE = 8
 
 class SpeechEnhancementNetwork(object):
 
-	def __init__(self, model, fit_model=None):
+	def __init__(self, model, fit_model=None, num_gpus=None):
+		self.gpus = num_gpus
 		self.__model = model
 		self.__fit_model = fit_model
 
@@ -211,7 +212,7 @@ class SpeechEnhancementNetwork(object):
 		print 'Net'
 		model.summary()
 
-		return SpeechEnhancementNetwork(model, fit_model)
+		return SpeechEnhancementNetwork(model, fit_model, num_gpus)
 
 
 	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
@@ -226,7 +227,11 @@ class SpeechEnhancementNetwork(object):
 
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
-
+		tensorboard = TensorBoard(log_dir=model_cache.tensorboard_path(),
+								  histogram_freq=10,
+								  batch_size=BATCH_SIZE * self.gpus,
+								  write_graph=False,
+								  write_grads=True)
 		self.__fit_model.fit(
 			x=[train_mixed_spectrograms, train_video_samples],
 			y=[train_label_spectrograms],
@@ -236,8 +241,8 @@ class SpeechEnhancementNetwork(object):
 				[validation_label_spectrograms],
 			),
 
-			batch_size=16, epochs=1000,
-			callbacks=[checkpoint, lr_decay, early_stopping],
+			batch_size=BATCH_SIZE * self.gpus, epochs=1000,
+			callbacks=[checkpoint, lr_decay, early_stopping, tensorboard],
 			verbose=1
 		)
 
