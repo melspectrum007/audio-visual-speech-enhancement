@@ -32,7 +32,7 @@ class WavenetVocoder(object):
 			self.num_conditioning_channels = num_conditioning_channels
 			self.kernel_size = kernel_size
 			self.gpus = gpus
-			self.__model, self.__fit_model = self.build(spec_shape)
+			self.model, self.__fit_model = self.build(spec_shape)
 
 	def build_upsample_net(self, input_shape):
 		layer_input = Input(input_shape)
@@ -88,7 +88,7 @@ class WavenetVocoder(object):
 
 	def build(self, spec_shape):
 		spectrogram = Input(spec_shape)
-		waveform_input = Input((None, 1))
+		waveform_input = Input((spec_shape[1] * 160 , 1))
 
 
 		upsample_net = self.build_upsample_net(spec_shape)
@@ -99,8 +99,8 @@ class WavenetVocoder(object):
 		skips = []
 		for i in range(self.num_dilated_blocks):
 			if i == 0:
-				block = self.build_dilated_conv_block(layer_input_shape=(None, 1),
-													  conditioning_input_shape=(None, self.num_conditioning_channels),
+				block = self.build_dilated_conv_block(layer_input_shape=(spec_shape[1] * 160, 1),
+													  conditioning_input_shape=(spec_shape[1] * 160, self.num_conditioning_channels),
 													  kernel_size=self.kernel_size,
 													  dilation=2**(i % 10),
 													  num_dilated_filters=self.num_skip_channels,
@@ -108,8 +108,8 @@ class WavenetVocoder(object):
 													  number=i+1)
 				layer_input, skip = block(inputs=[waveform_input, conditioning])
 			else:
-				block = self.build_dilated_conv_block(layer_input_shape=(None, self.num_skip_channels),
-													  conditioning_input_shape=(None, self.num_conditioning_channels),
+				block = self.build_dilated_conv_block(layer_input_shape=(spec_shape[1] * 160, self.num_skip_channels),
+													  conditioning_input_shape=(spec_shape[1] * 160, self.num_conditioning_channels),
 													  kernel_size=self.kernel_size,
 													  dilation=2**(i % 10),
 													  num_dilated_filters=self.num_skip_channels,
@@ -177,31 +177,24 @@ class WavenetVocoder(object):
 		)
 
 	def predict_one_sample(self, enhanced_spectrogam, source_waveform=None):
-
-		# source_waveform = one_hot_encoding(mu_law_quantization(source_waveform, 256, 32768), 256)
-		#
-		# self.__model.compile(optimizers.adam(lr=5e-4), 'categorical_crossentropy')
-		# loss = self.__model.evaluate(enhanced_spectrogam, source_waveform)
-		# print loss
-
-		# for layer in self.__model.layers:
-		# 	print layer.name
-		# 	# temp_model = Model(inputs=self.__model.input, outputs=layer.get_output_at(0))
-		# 	# layer_output = temp_model.predict(enhanced_spectrogam)
-		# 	# print layer_output
-		# 	w = layer.get_weights()
-		# 	print w
-		#
-		# print 'whoa!'
-
-
-		probs = self.__model.predict(enhanced_spectrogam)
-		classes = np.argmax(probs, axis=1)
+		waveform = np.random.normal(0, 0.001, 2048)
 		bins = np.linspace(-1, 1, 256 + 1)[:-1]
-		y = bins[classes]
-		norm_waveform = np.sign(y) * ((1 + 255) ** np.abs(y) - 1) / 255
 
-		return np.squeeze(norm_waveform) * 32768
+		while waveform.size < enhanced_spectrogam.shape[1]:
+			prob = self.model.predict(enhanced_spectrogam[:, :waveform.size])[:, -1]
+			category = np.argmax(prob)
+			y = bins[category]
+			waveform = np.append(waveform, y)
+
+		waveform = np.sign(waveform) * ((1 + 255) ** np.abs(waveform) - 1) / 255
+
+		# OLD:
+		# probs = self.__model.predict(enhanced_spectrogam)
+		# classes = np.argmax(probs, axis=1)
+		# y = bins[classes]
+		# norm_waveform = np.sign(y) * ((1 + 255) ** np.abs(y) - 1) / 255
+
+		return waveform * 32768
 
 
 	# def evaluate_one_sample(self, enhanced_spectrogram, source_waveform):
@@ -214,8 +207,8 @@ class WavenetVocoder(object):
 
 	def save_model(self):
 		try:
-			self.__model.save(self.model_cache.model_path())
-			self.__model.save(self.model_cache.model_backup_path())
+			self.model.save(self.model_cache.model_path())
+			self.model.save(self.model_cache.model_backup_path())
 		except Exception as e:
 			print(e)
 
@@ -224,7 +217,7 @@ class WavenetVocoder(object):
 		model_cache = ModelCache(model_cache_dir)
 		model = load_model(model_cache.model_backup_path(), custom_objects={'tf':K})
 		vocoder = WavenetVocoder()
-		vocoder.__model = model
+		vocoder.model = model
 
 		return vocoder
 
@@ -256,10 +249,13 @@ if __name__ == '__main__':
 	net = WavenetVocoder(model_cache_dir='/tmp',
 						 num_upsample_channels=80,
 						 num_dilated_blocks=20,
-						 num_skip_channels=16,
+						 num_skip_channels=256,
 						 num_conditioning_channels=10,
-						 spec_shape=(80, None))
+						 spec_shape=(80, 70))
 
+	for layer in net.model.layers:
+		print layer.input_shape
+		print layer.output_shape
 
 # def predict_one_sample(self, enhanced_spectrograms):
 	# 	params = self.__model.predict(enhanced_spectrograms, batch_size=1)

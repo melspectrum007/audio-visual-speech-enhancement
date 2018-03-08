@@ -97,23 +97,23 @@ def train(args):
 	val_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.val_data_names]
 
 	train_video_samples, train_mixed_spectrograms, train_source_spectrograms = load_preprocessed_samples(
-		train_preprocessed_blob_paths, max_samples=None
+		train_preprocessed_blob_paths, max_samples=15
 	)[:3]
 
-	height, width, frames = train_video_samples.shape[2:]
-	freq, bins = train_mixed_spectrograms.shape[2:]
-
-	train_video_samples = train_video_samples.reshape(-1, height, width, frames)
-	train_mixed_spectrograms = train_mixed_spectrograms.reshape(-1, freq, bins)
-	train_source_spectrograms = train_source_spectrograms.reshape(-1, freq, bins)
+	# height, width, frames = train_video_samples.shape[2:]
+	# freq, bins = train_mixed_spectrograms.shape[2:]
+	#
+	# train_video_samples = train_video_samples.reshape(-1, height, width, frames)
+	# train_mixed_spectrograms = train_mixed_spectrograms.reshape(-1, freq, bins)
+	# train_source_spectrograms = train_source_spectrograms.reshape(-1, freq, bins)
 
 	val_video_samples, val_mixed_spectrograms, val_source_spectrograms = load_preprocessed_samples(
-		val_preprocessed_blob_paths, max_samples=None
+		val_preprocessed_blob_paths, max_samples=15
 	)[:3]
 
-	val_video_samples = val_video_samples.reshape(-1, height, width, frames)
-	val_mixed_spectrograms = val_mixed_spectrograms.reshape(-1, freq, bins)
-	val_source_spectrograms = val_source_spectrograms.reshape(-1, freq, bins)
+	# val_video_samples = val_video_samples.reshape(-1, height, width, frames)
+	# val_mixed_spectrograms = val_mixed_spectrograms.reshape(-1, freq, bins)
+	# val_source_spectrograms = val_source_spectrograms.reshape(-1, freq, bins)
 
 	print 'normalizing video samples...'
 	video_normalizer = utils.VideoNormalizer(train_video_samples)
@@ -123,8 +123,11 @@ def train(args):
 	with open(normalization_cache_path, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
+	spec_shape = train_mixed_spectrograms.shape[1:-1] + (None,)
+	video_shape = train_video_samples.shape[1:-1] + (None,)
+
 	print 'building network...'
-	network = SpeechEnhancementNetwork.build(train_mixed_spectrograms.shape[1:], train_video_samples.shape[1:])
+	network = SpeechEnhancementNetwork.build(spec_shape, video_shape, num_gpus=args.gpus)
 	network.train(
 		train_mixed_spectrograms, train_video_samples, train_source_spectrograms,
 		val_mixed_spectrograms, val_video_samples, val_source_spectrograms,
@@ -312,8 +315,8 @@ def train_vocoder(args):
 
 	print 'building network...'
 	network = WavenetVocoder(num_upsample_channels=80,
-							 num_dilated_blocks=30,
-							 num_skip_channels=256,
+							 num_dilated_blocks=20,
+							 num_skip_channels=128,
 							 num_conditioning_channels=10,
 							 kernel_size=2,
 							 spec_shape=(train_enhanced_spectrograms.shape[1], None),
@@ -435,6 +438,11 @@ def list_data(dataset, speaker_ids, noise_dirs, max_files=None, shuffle=True):
 	n_files = min(speech_subset.size(), len(noise_file_paths))
 
 	return speech_subset.video_paths()[:n_files], speech_subset.audio_paths()[:n_files], noise_file_paths[:n_files]
+
+
+
+
+
 
 
 def main():

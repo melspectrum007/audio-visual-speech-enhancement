@@ -13,7 +13,7 @@ import tensorflow as tf
 import numpy as np
 
 AUDIO_TO_VIDEO_RATIO = 4
-BATCH_SIZE = 8
+BATCH_SIZE = 1
 
 class SpeechEnhancementNetwork(object):
 
@@ -30,12 +30,12 @@ class SpeechEnhancementNetwork(object):
 		audio_encoder = cls.__build_audio_encoder(audio_spectrogram_shape)
 		audio_embedding = audio_encoder(audio_input)
 
-		video_encoder = cls.__build_video_encoder(video_shape)
-		video_embedding = video_encoder(video_input)
+		# video_encoder = cls.__build_video_encoder(video_shape)
+		# video_embedding = video_encoder(video_input)
+		#
+		# shared_embeding = Concatenate()([audio_embedding, video_embedding])
 
-		shared_embeding = Concatenate()([audio_embedding, video_embedding])
-
-		model = Model(inputs=[audio_input, video_input], outputs=shared_embeding, name='Encoder')
+		model = Model(inputs=[audio_input, video_input], outputs=audio_embedding, name='Encoder')
 		print 'Encoder'
 		model.summary()
 
@@ -138,19 +138,19 @@ class SpeechEnhancementNetwork(object):
 	def __build_audio_decoder(spectogram_shape):
 		audio_spec = Input(spectogram_shape)
 
-		x = Conv1D(80, kernel_size=5, padding='same', activation='relu')(audio_spec)
+		x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(audio_spec)
 		x = BatchNormalization()(x)
 
-		x = Conv1D(80, kernel_size=5, padding='same', activation='relu')(x)
+		x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
 		x = BatchNormalization()(x)
 
-		x = Conv1D(80, kernel_size=5, padding='same', activation='relu')(x)
+		x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
 		x = BatchNormalization()(x)
 
-		x = Conv1D(80, kernel_size=5, padding='same', activation='relu')(x)
+		x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
 		x = BatchNormalization()(x)
 
-		x = Conv1D(80, kernel_size=5, padding='same', activation='relu')(x)
+		x = Conv1D(80, kernel_size=5, padding='same')(x)
 
 		x = Add()([audio_spec, x])
 
@@ -165,9 +165,9 @@ class SpeechEnhancementNetwork(object):
 		shared_input = Input(shared_embeding_shape)
 
 		x = Bidirectional(LSTM(256, return_sequences=True))(shared_input)
-		x = Bidirectional(LSTM(128, return_sequences=True))(x)
+		# x = Bidirectional(LSTM(256, return_sequences=True))(x)
 
-		mask = LSTM(80, activation=None, return_sequences=True)(x)
+		mask = LSTM(80, activation='relu', return_sequences=True)(x)
 
 		model = Model(inputs=shared_input, outputs=mask, name='Attention')
 		print 'Attention'
@@ -196,6 +196,7 @@ class SpeechEnhancementNetwork(object):
 		fine_output_spec = decoder(coarse_output_spec)
 
 		fine_output_spec = Permute((2,1))(fine_output_spec)
+		# fine_output_spec = Permute((2,1))(coarse_output_spec)
 
 		optimizer = optimizers.adam(lr=5e-4)
 
