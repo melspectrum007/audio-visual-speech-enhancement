@@ -202,7 +202,15 @@ class VideoNormalizer(object):
 		self.__std_image = np.std(video_samples, axis=(0, 3))
 
 	def normalize(self, video_samples):
-		for s in range(video_samples.shape[0]):
-			for f in range(video_samples.shape[3]):
-				video_samples[s, :, :, f] -= self.__mean_image
-				video_samples[s, :, :, f] /= self.__std_image
+		video_samples -= self.__mean_image[..., np.newaxis]
+		video_samples /= self.__std_image[..., np.newaxis]
+
+class AudioNormalizer(object):
+
+	def __init__(self, spectrograms):
+		self.__mean = np.mean(spectrograms, axis=(0, 1))
+		self.__std = np.std(spectrograms, axis=(0, 1))
+
+	def normalize(self, spectrograms):
+		spectrograms -= self.__mean
+		spectrograms /= self.__std

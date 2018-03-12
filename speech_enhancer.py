@@ -100,25 +100,20 @@ def train(args):
 		train_preprocessed_blob_paths, max_samples=15
 	)[:3]
 
-	# height, width, frames = train_video_samples.shape[2:]
-	# freq, bins = train_mixed_spectrograms.shape[2:]
-	#
-	# train_video_samples = train_video_samples.reshape(-1, height, width, frames)
-	# train_mixed_spectrograms = train_mixed_spectrograms.reshape(-1, freq, bins)
-	# train_source_spectrograms = train_source_spectrograms.reshape(-1, freq, bins)
-
 	val_video_samples, val_mixed_spectrograms, val_source_spectrograms = load_preprocessed_samples(
 		val_preprocessed_blob_paths, max_samples=15
 	)[:3]
-
-	# val_video_samples = val_video_samples.reshape(-1, height, width, frames)
-	# val_mixed_spectrograms = val_mixed_spectrograms.reshape(-1, freq, bins)
-	# val_source_spectrograms = val_source_spectrograms.reshape(-1, freq, bins)
 
 	print 'normalizing video samples...'
 	video_normalizer = utils.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(val_video_samples)
+
+	audio_normalizer = utils.AudioNormalizer(train_mixed_spectrograms)
+	audio_normalizer.normalize(train_mixed_spectrograms)
+	audio_normalizer.normalize(val_mixed_spectrograms)
+	audio_normalizer.normalize(train_source_spectrograms)
+	audio_normalizer.normalize(val_source_spectrograms)
 
 	with open(normalization_cache_path, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
@@ -347,6 +342,7 @@ def predict_vocoder(args):
 	# source_waveforms = np.concatenate(np.split(source_waveforms, 4, axis=1), axis=0)
 
 	for i in range(enhanced_spectrogarms.shape[0]):
+		print i + 1
 		wave_data = network.predict_one_sample(enhanced_spectrogarms[i][np.newaxis, ...])
 		enhanced_signal = AudioSignal(wave_data, 16000)
 		source_signal = AudioSignal(source_waveforms[i], 16000)

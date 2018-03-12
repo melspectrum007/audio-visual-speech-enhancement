@@ -22,6 +22,19 @@ class SpeechEnhancementNetwork(object):
 		self.__model = model
 		self.__fit_model = fit_model
 
+
+	@classmethod
+	def __build_res_block(cls, input_shape, num_filters, kernel_size):
+		input_spec = Input(input_shape)
+
+		x = Conv1D(num_filters, kernel_size, padding='same')(input_spec)
+		x = Activation('relu')(x)
+		x = Conv1D(num_filters, kernel_size, padding='same')(x)
+
+		x = Add()([input_spec, x])
+
+
+
 	@classmethod
 	def __build_encoder(cls, audio_spectrogram_shape, video_shape):
 		audio_input = Input(shape=audio_spectrogram_shape)
@@ -30,12 +43,12 @@ class SpeechEnhancementNetwork(object):
 		audio_encoder = cls.__build_audio_encoder(audio_spectrogram_shape)
 		audio_embedding = audio_encoder(audio_input)
 
-		# video_encoder = cls.__build_video_encoder(video_shape)
-		# video_embedding = video_encoder(video_input)
-		#
-		# shared_embeding = Concatenate()([audio_embedding, video_embedding])
+		video_encoder = cls.__build_video_encoder(video_shape)
+		video_embedding = video_encoder(video_input)
 
-		model = Model(inputs=[audio_input, video_input], outputs=audio_embedding, name='Encoder')
+		shared_embeding = Concatenate()([audio_embedding, video_embedding])
+
+		model = Model(inputs=[audio_input, video_input], outputs=shared_embeding, name='Encoder')
 		print 'Encoder'
 		model.summary()
 
@@ -138,23 +151,26 @@ class SpeechEnhancementNetwork(object):
 	def __build_audio_decoder(spectogram_shape):
 		audio_spec = Input(spectogram_shape)
 
-		x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(audio_spec)
-		x = BatchNormalization()(x)
+		out_spec = TimeDistributed(Dense(256), input_shape=spectogram_shape)(audio_spec)
+		out_spec = TimeDistributed(Dense(80), input_shape=spectogram_shape)(out_spec)
 
-		x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
-		x = BatchNormalization()(x)
+		# x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(out_spec)
+		# x = BatchNormalization()(x)
+		#
+		# x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
+		# x = BatchNormalization()(x)
+		#
+		# x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
+		# x = BatchNormalization()(x)
+		#
+		# x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
+		# x = BatchNormalization()(x)
+		#
+		# x = Conv1D(80, kernel_size=5, padding='same')(x)
+		#
+		# x = Add()([out_spec, x])
 
-		x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
-		x = BatchNormalization()(x)
-
-		x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
-		x = BatchNormalization()(x)
-
-		x = Conv1D(80, kernel_size=5, padding='same')(x)
-
-		x = Add()([audio_spec, x])
-
-		model = Model(inputs=audio_spec, outputs=x, name='Audio_Decoder')
+		model = Model(inputs=audio_spec, outputs=out_spec, name='Audio_Decoder')
 		print 'Audio Decoder'
 		model.summary()
 
@@ -167,7 +183,7 @@ class SpeechEnhancementNetwork(object):
 		x = Bidirectional(LSTM(256, return_sequences=True))(shared_input)
 		# x = Bidirectional(LSTM(256, return_sequences=True))(x)
 
-		mask = LSTM(80, activation='relu', return_sequences=True)(x)
+		mask = LSTM(256, activation='relu', return_sequences=True)(x)
 
 		model = Model(inputs=shared_input, outputs=mask, name='Attention')
 		print 'Attention'
@@ -185,7 +201,7 @@ class SpeechEnhancementNetwork(object):
 
 		encoder = cls.__build_encoder(audio_spectrogram_shape, video_shape)
 		attention = cls.__build_attention((None, 384))
-		decoder = cls.__build_audio_decoder((None, 80))
+		decoder = cls.__build_audio_decoder((None, 256))
 
 		input_spec = Input(shape=audio_spectrogram_shape)
 		input_frames = Input(shape=video_shape)
@@ -198,7 +214,7 @@ class SpeechEnhancementNetwork(object):
 		fine_output_spec = Permute((2,1))(fine_output_spec)
 		# fine_output_spec = Permute((2,1))(coarse_output_spec)
 
-		optimizer = optimizers.adam(lr=5e-4)
+		optimizer = optimizers.adam(lr=5e-4, clipnorm=1.0)
 
 		if num_gpus > 1:
 			with tf.device('/cpu:0'):

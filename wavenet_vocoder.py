@@ -88,7 +88,8 @@ class WavenetVocoder(object):
 
 	def build(self, spec_shape):
 		spectrogram = Input(spec_shape)
-		waveform_input = Input((spec_shape[1] * 160 , 1))
+		time_dim = spec_shape[1] * 160 if spec_shape[1] is not None else None
+		waveform_input = Input((time_dim , 1))
 
 
 		upsample_net = self.build_upsample_net(spec_shape)
@@ -99,8 +100,8 @@ class WavenetVocoder(object):
 		skips = []
 		for i in range(self.num_dilated_blocks):
 			if i == 0:
-				block = self.build_dilated_conv_block(layer_input_shape=(spec_shape[1] * 160, 1),
-													  conditioning_input_shape=(spec_shape[1] * 160, self.num_conditioning_channels),
+				block = self.build_dilated_conv_block(layer_input_shape=(time_dim, 1),
+													  conditioning_input_shape=(time_dim, self.num_conditioning_channels),
 													  kernel_size=self.kernel_size,
 													  dilation=2**(i % 10),
 													  num_dilated_filters=self.num_skip_channels,
@@ -108,8 +109,8 @@ class WavenetVocoder(object):
 													  number=i+1)
 				layer_input, skip = block(inputs=[waveform_input, conditioning])
 			else:
-				block = self.build_dilated_conv_block(layer_input_shape=(spec_shape[1] * 160, self.num_skip_channels),
-													  conditioning_input_shape=(spec_shape[1] * 160, self.num_conditioning_channels),
+				block = self.build_dilated_conv_block(layer_input_shape=(time_dim, self.num_skip_channels),
+													  conditioning_input_shape=(time_dim, self.num_conditioning_channels),
 													  kernel_size=self.kernel_size,
 													  dilation=2**(i % 10),
 													  num_dilated_filters=self.num_skip_channels,
@@ -120,10 +121,10 @@ class WavenetVocoder(object):
 			skips.append(skip)
 
 		stack = Add()(skips)
-		stack = Activation('relu')(stack)
+		stack = Activation('tanh')(stack)
 
 		stack = Conv1D(256, 1)(stack)
-		stack = Activation('relu')(stack)
+		stack = Activation('tanh')(stack)
 		stack = Conv1D(256, 1)(stack)
 		probs = Activation('softmax')(stack)
 		probs = Permute((2,1))(probs)
@@ -177,12 +178,15 @@ class WavenetVocoder(object):
 		)
 
 	def predict_one_sample(self, enhanced_spectrogam, source_waveform=None):
-		waveform = np.random.normal(0, 0.001, 2048)
+		waveform = np.random.normal(0, 0.01, 2048)
 		bins = np.linspace(-1, 1, 256 + 1)[:-1]
 
-		while waveform.size < enhanced_spectrogam.shape[1]:
-			prob = self.model.predict(enhanced_spectrogam[:, :waveform.size])[:, -1]
-			category = np.argmax(prob)
+		# enhanced_spectrogram.shape = (1, F, T)
+		while waveform.size < enhanced_spectrogam.shape[2] * 160:
+			spec_col = waveform.size / 160 + 1
+			padded_waveform = np.pad(waveform, (0, spec_col * 160 - waveform.size), mode='constant')
+			probs = self.model.predict(x=[enhanced_spectrogam[:, :, :spec_col], padded_waveform[np.newaxis, :, np.newaxis]], batch_size=1)[0]
+			category = np.argmax(np.squeeze(probs)[:, waveform.size-1])
 			y = bins[category]
 			waveform = np.append(waveform, y)
 
@@ -251,11 +255,8 @@ if __name__ == '__main__':
 						 num_dilated_blocks=20,
 						 num_skip_channels=256,
 						 num_conditioning_channels=10,
-						 spec_shape=(80, 70))
+						 spec_shape=(80, None))
 
-	for layer in net.model.layers:
-		print layer.input_shape
-		print layer.output_shape
 
 # def predict_one_sample(self, enhanced_spectrograms):
 	# 	params = self.__model.predict(enhanced_spectrograms, batch_size=1)
