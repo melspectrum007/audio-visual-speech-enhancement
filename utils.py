@@ -37,7 +37,7 @@ class DataProcessor(object):
 		return mouth_cropped_frames
 
 	def get_mag_phase(self, audio_data):
-		mag, phase = lb.magphase(lb.stft(audio_data, self.nfft_single_frame, self.hop))
+		mag, phase = lb.magphase(lb.stft(audio_data.astype('f'), self.nfft_single_frame, self.hop))
 
 		if self.mel:
 			mag = np.dot(self.mel_filters, mag)
@@ -138,10 +138,10 @@ def mix_source_noise(source_path, noies_path):
 	source = AudioSignal.from_wav_file(source_path)
 	noise = AudioSignal.from_wav_file(noies_path)
 
-	if source.get_number_of_samples() < noise.get_number_of_samples():
-		noise.truncate(source.get_number_of_samples())
-	else:
-		noise.pad_with_zeros(source.get_number_of_samples())
+	while source.get_number_of_samples() > noise.get_number_of_samples():
+		noise = AudioSignal.concat([noise, noise])
+
+	noise.truncate(source.get_number_of_samples())
 	noise.amplify(source, 0)
 
 	return AudioMixer().mix([source, noise])
@@ -162,8 +162,9 @@ def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 	data_processor = DataProcessor(fps, sr)
 
 	samples = zip(video_file_paths, source_file_paths, noise_file_paths)
-	thread_pool = multiprocess.Pool(8)
-	preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
+	# thread_pool = multiprocess.Pool(24)
+	# preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
+	preprocessed = map(data_processor.try_preprocess_sample, samples)
 	preprocessed = [p for p in preprocessed if p is not None]
 
 	video_samples, mixed_spectrograms, mixed_phases, source_spectrogarms, source_phases = zip(*preprocessed)
@@ -208,9 +209,13 @@ class VideoNormalizer(object):
 class AudioNormalizer(object):
 
 	def __init__(self, spectrograms):
-		self.__mean = np.mean(spectrograms, axis=(0, 1))
-		self.__std = np.std(spectrograms, axis=(0, 1))
+		self.__mean = np.mean(spectrograms)
+		self.__std = np.std(spectrograms)
 
 	def normalize(self, spectrograms):
 		spectrograms -= self.__mean
 		spectrograms /= self.__std
+
+	def denormalize(self, spectrograms):
+		spectrograms *= self.__std
+		spectrograms += self.__mean
