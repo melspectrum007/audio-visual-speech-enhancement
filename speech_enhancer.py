@@ -79,7 +79,7 @@ def predict(args):
 			predicted_speech_spectrograms = network.predict(sample.mixed_spectrograms, sample.video_samples)
 
 			predicted_speech_signal = data_processor.reconstruct_speech_signal(
-				sample.mixed_signal, predicted_speech_spectrograms, sample.video_frame_rate, sample.peak
+				sample.mixed_signal, predicted_speech_spectrograms, sample.video_frame_rate
 			)
 
 			storage.save_prediction(sample, predicted_speech_signal)
