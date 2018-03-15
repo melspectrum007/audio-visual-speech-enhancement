@@ -62,7 +62,6 @@ class SpeechEnhancementNetwork(object):
 		for i in range(num_blocks):
 			x = cls.__build_res_block(spec_shape, num_filters, kernel_size, number=i)(x)
 
-
 		if num_gpus > 1:
 			with tf.device('/cpu:0'):
 				model = Model(inputs=[input_vid, input_spec], outputs=[x], name='Net')
@@ -138,52 +137,94 @@ class SpeechEnhancementNetwork(object):
 	def __build_video_encoder(video_shape):
 		video_input = Input(shape=video_shape)
 
-		x = Convolution3D(80, kernel_size=(5, 5, 3), padding='same')(video_input)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		x = Dropout(0.25)(x)
+		x = Lambda(lambda a: K.expand_dims(a, -1))(video_input)
 
-		x = Convolution3D(80, kernel_size=(5, 5, 3), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		x = Dropout(0.25)(x)
+		x = TimeDistributed(Conv2D(80, (5, 5), padding='same'))(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
 
-		x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		x = Dropout(0.25)(x)
+		x = TimeDistributed(Conv2D(80, (5, 5), padding='same'))(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
 
-		x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		x = Dropout(0.25)(x)
+		x = TimeDistributed(Conv2D(80, (3, 3), padding='same'))(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
 
-		x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		x = Dropout(0.25)(x)
+		x = TimeDistributed(Conv2D(80, (3, 3), padding='same'))(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
 
-		x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		x = Dropout(0.25)(x)
+		x = TimeDistributed(Conv2D(80, (3, 3), padding='same'))(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
 
-		x = Convolution3D(80, kernel_size=(2, 2, 1), padding='valid')(x)
-		x = BatchNormalization()(x)
-		x = LeakyReLU()(x)
-		x = Dropout(0.25)(x)
+		x = TimeDistributed(Conv2D(80, (3, 3), padding='same'))(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
 
-		Squeeze = Lambda(lambda a: K.squeeze(a, axis=1))
+		x = TimeDistributed(Flatten())(x)
 
-		x = Squeeze(Squeeze(x))
+		x = Conv1D(80, 5, padding='same')(x)
+		x = Conv1D(80, 5, padding='same')(x)
+		x = Conv1D(80, 5, padding='same')(x)
+		x = Conv1D(80, 5, padding='same')(x)
 
 		x = UpSampling1D(4)(x)
+
+
+		# x = Convolution3D(80, kernel_size=(5, 5, 3), padding='same')(video_input)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
+		# x = Dropout(0.25)(x)
+		#
+		# x = Convolution3D(80, kernel_size=(5, 5, 3), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
+		# x = Dropout(0.25)(x)
+		#
+		# x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
+		# x = Dropout(0.25)(x)
+		#
+		# x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
+		# x = Dropout(0.25)(x)
+		#
+		# x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
+		# x = Dropout(0.25)(x)
+		#
+		# x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
+		# x = Dropout(0.25)(x)
+		#
+		# x = Convolution3D(80, kernel_size=(2, 2, 1), padding='valid')(x)
+		# x = BatchNormalization()(x)
+		# x = LeakyReLU()(x)
+		# x = Dropout(0.25)(x)
+
+		# Squeeze = Lambda(lambda a: K.squeeze(a, axis=1))
+
+		# x = Squeeze(Squeeze(x))
+
+		# x = UpSampling1D(4)(x)
 
 		model = Model(inputs=video_input, outputs=x, name='Video_Encoder')
 		print 'Video Encoder'
@@ -278,11 +319,7 @@ class SpeechEnhancementNetwork(object):
 	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
 			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms):
 
-		# train_video_samples = np.expand_dims(train_video_samples, -1)  # append channels axis
-		# validation_video_samples = np.expand_dims(validation_video_samples, -1)  # append channels axis
-
 		SaveModel = LambdaCallback(on_epoch_end=lambda epoch, logs: self.save_model())
-
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
 		early_stopping = EarlyStopping(monitor='val_loss', min_delta=0.01, patience=10, verbose=1)
 		tensorboard = TensorBoard(log_dir=self.model_cache.tensorboard_path(),
@@ -354,5 +391,5 @@ class ModelCache(object):
 
 if __name__ == '__main__':
 	# net = SpeechEnhancementNetwork.build((80, None), (128, 128, None), num_gpus=0)
-	net = SpeechEnhancementNetwork.build((128, 128, None, 1), (None, 80), num_filters=80, num_blocks=15, kernel_size=5, num_gpus=1,
+	net = SpeechEnhancementNetwork.build((None, 128, 128), (None, 80), num_filters=80, num_blocks=15, kernel_size=5, num_gpus=1,
 										 model_cache_dir=None)

@@ -133,11 +133,12 @@ def train(args):
 	val_mixed_spectrograms = np.swapaxes(val_mixed_spectrograms, 1, 2)
 	val_source_spectrograms = np.swapaxes(val_source_spectrograms, 1, 2)
 
-	spec_shape = (None, train_mixed_spectrograms.shape[2])
+	train_video_samples = np.rollaxis(train_video_samples, 3, 1)
+	val_video_samples = np.rollaxis(val_video_samples, 3, 1)
 
-	train_video_samples = np.expand_dims(train_video_samples, axis=-1)
-	val_video_samples = np.expand_dims(val_video_samples, axis=-1)
-	video_shape = (128, 128, None, 1)
+
+	spec_shape = (None, train_mixed_spectrograms.shape[2])
+	video_shape = (None, 128, 128)
 
 	print 'building network...'
 	network = SpeechEnhancementNetwork.build(video_shape,
