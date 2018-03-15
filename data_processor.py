@@ -2,11 +2,11 @@ import multiprocess
 from collections import namedtuple
 
 import numpy as np
+import librosa
 
 from facedetection.face_detection import FaceDetector
 from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
-from mediaio.dsp.spectrogram import MelConverter
 
 
 def preprocess_video_sample(video_file_path, slice_duration_ms, mouth_height=128, mouth_width=128):
@@ -44,8 +44,7 @@ def preprocess_audio_signal(audio_signal, slice_duration_ms, n_video_slices, vid
 	n_fft = int(float(audio_signal.get_sample_rate()) / video_frame_rate)
 	hop_length = int(n_fft / 4)
 
-	mel_converter = MelConverter(audio_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=80, freq_min_hz=0, freq_max_hz=8000)
-	mel_spectrogram = mel_converter.signal_to_mel_spectrogram(audio_signal)
+	mel_spectrogram, phase = signal_to_spectrogram(audio_signal, n_fft, hop_length, mel=True, db=True)
 
 	spectrogram_samples_per_slice = int(samples_per_slice / hop_length)
 	n_slices = int(mel_spectrogram.shape[1] / spectrogram_samples_per_slice)
@@ -62,8 +61,7 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rat
 	n_fft = int(float(mixed_signal.get_sample_rate()) / video_frame_rate)
 	hop_length = int(n_fft / 4)
 
-	mel_converter = MelConverter(mixed_signal.get_sample_rate(), n_fft, hop_length, n_mel_freqs=80, freq_min_hz=0, freq_max_hz=8000)
-	_, original_phase = mel_converter.signal_to_mel_spectrogram(mixed_signal, get_phase=True)
+	_, original_phase = signal_to_spectrogram(mixed_signal, n_fft, hop_length, mel=True, db=True)
 
 	speech_spectrogram = np.concatenate(list(speech_spectrograms), axis=1)
 
@@ -71,7 +69,51 @@ def reconstruct_speech_signal(mixed_signal, speech_spectrograms, video_frame_rat
 	speech_spectrogram = speech_spectrogram[:, :spectrogram_length]
 	original_phase = original_phase[:, :spectrogram_length]
 
-	return mel_converter.reconstruct_signal_from_mel_spectrogram(speech_spectrogram, phase=original_phase)
+	return reconstruct_signal_from_spectrogram(
+		speech_spectrogram, original_phase, mixed_signal.get_sample_rate(), n_fft, hop_length, mel=True, db=True
+	)
+
+
+def signal_to_spectrogram(audio_signal, n_fft, hop_length, mel=True, db=True):
+	signal = audio_signal.get_data(channel_index=0)
+	D = librosa.core.stft(signal, n_fft=n_fft, hop_length=hop_length)
+	magnitude, phase = librosa.core.magphase(D)
+
+	if mel:
+		mel_filterbank = librosa.filters.mel(
+			sr=audio_signal.get_sample_rate(),
+			n_fft=n_fft,
+			n_mels=80,
+			fmin=0,
+			fmax=8000
+		)
+
+		magnitude = np.dot(mel_filterbank, magnitude)
+
+	if db:
+		magnitude = librosa.amplitude_to_db(magnitude)
+
+	return magnitude, phase
+
+
+def reconstruct_signal_from_spectrogram(magnitude, phase, sample_rate, n_fft, hop_length, mel=True, db=True):
+	if db:
+		magnitude = librosa.db_to_amplitude(magnitude)
+
+	if mel:
+		mel_filterbank = librosa.filters.mel(
+			sr=sample_rate,
+			n_fft=n_fft,
+			n_mels=80,
+			fmin=0,
+			fmax=8000
+		)
+
+		magnitude = np.dot(np.linalg.pinv(mel_filterbank), magnitude)
+
+	signal = librosa.istft(magnitude * phase, hop_length=hop_length)
+
+	return AudioSignal(signal, sample_rate)
 
 
 def preprocess_audio_pair(speech_file_path, noise_file_path, slice_duration_ms, n_video_slices, video_frame_rate):
