@@ -1,8 +1,9 @@
 import argparse
 import os
-from datetime import datetime
 import logging
 import pickle
+import random
+from datetime import datetime
 
 import numpy as np
 
@@ -35,10 +36,10 @@ def train(args):
 	validation_preprocessed_blob_paths = [assets.get_preprocessed_blob_path(d) for d in args.validation_data_names]
 
 	train_samples = load_preprocessed_blobs(train_preprocessed_blob_paths)
-	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms = merge_training_set(train_samples)
+	train_video_samples, train_mixed_spectrograms, train_speech_spectrograms = make_sample_set(train_samples)
 
 	validation_samples = load_preprocessed_blobs(validation_preprocessed_blob_paths)
-	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms = merge_training_set(validation_samples)
+	validation_video_samples, validation_mixed_spectrograms, validation_speech_spectrograms = make_sample_set(validation_samples)
 
 	video_normalizer = data_processor.VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
@@ -227,7 +228,14 @@ def load_preprocessed_blobs(preprocessed_blob_paths):
 	return all_samples
 
 
-def merge_training_set(samples, max_sample_slices=None):
+def make_sample_set(samples, max_samples=None):
+	if max_samples is not None:
+		n_samples = min(len(samples), max_samples)
+	else:
+		n_samples = len(samples)
+
+	samples = random.sample(samples, n_samples)
+
 	video_samples = np.concatenate([sample.video_samples for sample in samples], axis=0)
 	mixed_spectrograms = np.concatenate([sample.mixed_spectrograms for sample in samples], axis=0)
 	speech_spectrograms = np.concatenate([sample.speech_spectrograms for sample in samples], axis=0)
@@ -238,9 +246,9 @@ def merge_training_set(samples, max_sample_slices=None):
 	speech_spectrograms = speech_spectrograms[permutation]
 
 	return (
-		video_samples[:max_sample_slices],
-		mixed_spectrograms[:max_sample_slices],
-		speech_spectrograms[:max_sample_slices]
+		video_samples,
+		mixed_spectrograms,
+		speech_spectrograms
 	)
 
 

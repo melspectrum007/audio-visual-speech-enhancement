@@ -1,5 +1,3 @@
-import os
-
 from keras import optimizers
 from keras.layers import Input, Dense, Convolution2D, MaxPooling2D, Deconvolution2D
 from keras.layers import Dropout, Flatten, BatchNormalization, LeakyReLU, Reshape
