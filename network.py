@@ -342,8 +342,7 @@ class SpeechEnhancementNetwork(object):
 		)
 
 	def predict(self, mixed_spectrograms, video_samples):
-		video_samples = np.expand_dims(video_samples, -1)  # append channels axis
-		speech_spectrograms = self.__model.predict([mixed_spectrograms], batch_size=BATCH_SIZE)
+		speech_spectrograms = self.__model.predict([video_samples, mixed_spectrograms], batch_size=1)
 
 		return np.squeeze(speech_spectrograms)
 

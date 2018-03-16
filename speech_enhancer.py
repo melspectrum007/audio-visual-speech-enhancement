@@ -169,7 +169,7 @@ def predict(args):
 	dp = utils.DataProcessor(25, 16000)
 	network = SpeechEnhancementNetwork.load(model_cache_dir)
 
-	enhanced_specs = network.predict(np.swapaxes(mix_specs, 1, 2), vid)
+	enhanced_specs = network.predict(np.swapaxes(mix_specs, 1, 2), np.rollaxis(vid, 3, 1))
 	enhanced_specs = np.swapaxes(enhanced_specs, 1, 2)
 
 	np.save('/cs/grad/asaph/testing/specs3.npy', enhanced_specs)
