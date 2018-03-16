@@ -25,10 +25,13 @@ class SpeechEnhancementNetwork(object):
 
 
 	@classmethod
-	def __build_res_block(cls, input_shape, num_filters, kernel_size, number=None):
+	def __build_res_block(cls, input_shape, vid_shape, num_filters, kernel_size, number=None):
 		input_spec = Input(input_shape)
+		vid_input = Input(vid_shape)
 
-		x = Conv1D(num_filters, kernel_size, padding='same')(input_spec)
+		x = Concatenate()([input_spec, vid_input])
+
+		x = Conv1D(num_filters, kernel_size, padding='same')(x)
 		x = BatchNormalization()(x)
 		x = Activation('relu')(x)
 		x = Conv1D(num_filters, kernel_size, padding='same')(x)
@@ -36,12 +39,12 @@ class SpeechEnhancementNetwork(object):
 		x = Add()([input_spec, x])
 
 		if number is not None:
-			model = Model(input_spec, x, name='res_block_' + str(number))
+			model = Model([input_spec, vid_input], x, name='res_block_' + str(number))
 			if number == 1:
 				print 'Res Block'
 				model.summary()
 		else:
-			model = Model(input_spec, x)
+			model = Model([input_spec, vid_input], x)
 
 		return model
 
@@ -60,7 +63,11 @@ class SpeechEnhancementNetwork(object):
 		x = Activation('relu')(x)
 
 		for i in range(num_blocks):
-			x = cls.__build_res_block(spec_shape, num_filters, kernel_size, number=i)(x)
+			x = cls.__build_res_block(spec_shape,
+									  vid_shape=spec_shape,
+									  num_filters=num_filters,
+									  kernel_size=kernel_size,
+									  number=i)([x, vid_encoding])
 
 		if num_gpus > 1:
 			with tf.device('/cpu:0'):
