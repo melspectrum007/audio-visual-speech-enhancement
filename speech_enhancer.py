@@ -119,10 +119,13 @@ def train(args):
 	with open(normalization_cache_path, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
-	train_mixed_spectrograms = split_and_concat(train_mixed_spectrograms, axis=-1, split=SPLIT)
-	train_source_spectrograms = split_and_concat(train_source_spectrograms, axis=-1, split=SPLIT)
-	val_mixed_spectrograms = split_and_concat(val_mixed_spectrograms, axis=-1, split=SPLIT)
-	val_source_spectrograms = split_and_concat(val_source_spectrograms, axis=-1, split=SPLIT)
+	num_frames = train_video_samples.shape[3]
+	num_audio_bins = num_frames / SPLIT * 4 * SPLIT
+
+	train_mixed_spectrograms = split_and_concat(train_mixed_spectrograms[..., :num_audio_bins], axis=-1, split=SPLIT)
+	train_source_spectrograms = split_and_concat(train_source_spectrograms[..., :num_audio_bins], axis=-1, split=SPLIT)
+	val_mixed_spectrograms = split_and_concat(val_mixed_spectrograms[..., :num_audio_bins], axis=-1, split=SPLIT)
+	val_source_spectrograms = split_and_concat(val_source_spectrograms[..., :num_audio_bins], axis=-1, split=SPLIT)
 
 	train_video_samples = split_and_concat(train_video_samples, axis=-1, split=SPLIT)
 	val_video_samples = split_and_concat(val_video_samples, axis=-1, split=SPLIT)
@@ -469,7 +472,9 @@ class PredictionStorage(object):
 
 def split_and_concat(array, axis, split):
 	slc = [slice(None)] * array.ndim
-	slc[axis] = slice(0, -(array.shape[axis] % split))
+	mod = -(array.shape[axis] % split)
+	end = None if mod == 0 else mod
+	slc[axis] = slice(0, end)
 
 	return np.concatenate(np.split(array[slc], split, axis))
 
