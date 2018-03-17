@@ -18,11 +18,11 @@ def preprocess(args):
 	assets = AssetManager(args.base_dir)
 	speaker_ids = list_speakers(args)
 
-	speech_subset, noise_file_paths = list_data(
-		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1500, shuffle=True
+	speech_entries, noise_file_paths = list_data(
+		args.dataset_dir, speaker_ids, args.noise_dirs, max_files=1000, shuffle=True, augmentation_factor=1
 	)
 
-	samples = data_processor.preprocess_data(speech_subset, noise_file_paths)
+	samples = data_processor.preprocess_data(speech_entries, noise_file_paths)
 
 	with open(assets.get_preprocessed_blob_path(args.data_name), 'wb') as preprocessed_fd:
 		pickle.dump(samples, preprocessed_fd)
@@ -198,7 +198,7 @@ def list_speakers(args):
 	return speaker_ids
 
 
-def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True):
+def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True, augmentation_factor=1):
 	speech_dataset = AudioVisualDataset(dataset_dir)
 	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle)
 
@@ -207,7 +207,17 @@ def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True
 
 	n_files = min(len(speech_subset), len(noise_file_paths))
 
-	return speech_subset[:n_files], noise_file_paths[:n_files]
+	speech_entries = speech_subset[:n_files]
+	noise_file_paths = noise_file_paths[:n_files]
+
+	all_speech_entries = speech_entries
+	all_noise_file_paths = noise_file_paths
+
+	for i in range(augmentation_factor - 1):
+		all_speech_entries += speech_entries
+		all_noise_file_paths += random.sample(noise_file_paths, len(noise_file_paths))
+
+	return all_speech_entries, all_noise_file_paths
 
 
 def load_preprocessed_blob(preprocessed_blob_path):
@@ -219,11 +229,11 @@ def load_preprocessed_blob(preprocessed_blob_path):
 	return samples
 
 
-def load_preprocessed_blobs(preprocessed_blob_paths):
+def load_preprocessed_blobs(preprocessed_blob_paths, max_samples_per_blob=None):
 	all_samples = []
 
 	for preprocessed_blob_path in preprocessed_blob_paths:
-		all_samples += load_preprocessed_blob(preprocessed_blob_path)
+		all_samples += load_preprocessed_blob(preprocessed_blob_path)[:max_samples_per_blob]
 
 	return all_samples
 

@@ -186,10 +186,10 @@ def try_preprocess_sample(sample_paths):
 		return None
 
 
-def preprocess_data(speech_subset, noise_file_paths):
+def preprocess_data(speech_entries, noise_file_paths):
 	print("preprocessing data...")
 
-	sample_paths = zip(speech_subset, noise_file_paths)
+	sample_paths = zip(speech_entries, noise_file_paths)
 
 	thread_pool = multiprocess.Pool(8)
 	samples = thread_pool.map(try_preprocess_sample, sample_paths)
