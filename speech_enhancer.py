@@ -13,7 +13,7 @@ from mediaio.video_io import VideoFileReader
 from mediaio.audio_io import AudioSignal
 
 BASE_FOLDER = '/cs/labs/peleg/asaph/playground/avse' # todo: remove before releasing code
-SPLIT = 2
+SPLIT = 4
 
 def preprocess(args):
 	dataset_path = os.path.join(args.base_folder, 'data', args.dataset)
@@ -119,13 +119,13 @@ def train(args):
 	with open(normalization_cache_path, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
-	train_mixed_spectrograms = np.concatenate(np.split(train_mixed_spectrograms, SPLIT, axis=-1), axis=0)
-	train_source_spectrograms = np.concatenate(np.split(train_source_spectrograms, SPLIT, axis=-1), axis=0)
-	val_mixed_spectrograms = np.concatenate(np.split(val_mixed_spectrograms, SPLIT, axis=-1), axis=0)
-	val_source_spectrograms = np.concatenate(np.split(val_source_spectrograms, SPLIT, axis=-1), axis=0)
+	train_mixed_spectrograms = split_and_concat(train_mixed_spectrograms, axis=1, split=SPLIT)
+	train_source_spectrograms = split_and_concat(train_source_spectrograms, axis=1, split=SPLIT)
+	val_mixed_spectrograms = split_and_concat(val_mixed_spectrograms, axis=1, split=SPLIT)
+	val_source_spectrograms = split_and_concat(val_source_spectrograms, axis=1, split=SPLIT)
 
-	train_video_samples = np.concatenate(np.split(train_video_samples, SPLIT, axis=-1), axis=0)
-	val_video_samples = np.concatenate(np.split(val_video_samples, SPLIT, axis=-1), axis=0)
+	train_video_samples = split_and_concat(train_video_samples, axis=2, split=SPLIT)
+	val_video_samples = split_and_concat(val_video_samples, axis=2, split=SPLIT)
 
 	# transpose freq and time axis
 	train_mixed_spectrograms = np.swapaxes(train_mixed_spectrograms, 1, 2)
@@ -464,6 +464,12 @@ class PredictionStorage(object):
 		for i, spec in enumerate(spectrograms):
 			np.save(os.path.join(dir_path, names[i]), spec)
 
+
+def split_and_concat(array, axis, split):
+	slc = [slice(None)] * array.ndim
+	slc[axis] = slice(0, -(array.shape[axis] % split))
+
+	return np.concatenate(np.split(array[slc], split, axis))
 
 def list_speakers(args):
 	if args.speakers is None:
