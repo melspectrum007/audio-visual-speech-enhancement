@@ -137,7 +137,8 @@ def train(args):
 	val_video_samples = np.rollaxis(val_video_samples, 3, 1)
 
 
-	spec_shape = (None, train_mixed_spectrograms.shape[2])
+
+	spec_shape = (None, 80)
 	video_shape = (None, 128, 128)
 
 	print 'building network...'
