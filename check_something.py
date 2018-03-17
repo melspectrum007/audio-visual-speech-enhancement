@@ -1,7 +1,15 @@
 
-from mediaio.audio_io import AudioSignal, AudioMixer
 import numpy as np
 
-from speech_enhancer import load_preprocessed_samples
-from utils import DataProcessor
+def split_and_concat(array, axis, split):
+	slc = [slice(None)] * array.ndim
+	slc[axis] = slice(0, -(array.shape[axis] % split))
 
+	return np.concatenate(np.split(array[slc], split, axis))
+
+
+a = np.zeros([3, 80, 248])
+
+b = split_and_concat(a, -1, 4)
+
+print b.shape

@@ -13,7 +13,7 @@ from mediaio.video_io import VideoFileReader
 from mediaio.audio_io import AudioSignal
 
 BASE_FOLDER = '/cs/labs/peleg/asaph/playground/avse' # todo: remove before releasing code
-SPLIT = 4
+SPLIT = 6
 
 def preprocess(args):
 	dataset_path = os.path.join(args.base_folder, 'data', args.dataset)
