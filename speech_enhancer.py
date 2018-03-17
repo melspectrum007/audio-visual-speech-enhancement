@@ -136,7 +136,8 @@ def train(args):
 	train_video_samples = np.rollaxis(train_video_samples, 3, 1)
 	val_video_samples = np.rollaxis(val_video_samples, 3, 1)
 
-
+	print 'spec shape:', train_mixed_spectrograms.shape
+	print 'vid shape:', train_video_samples.shape
 
 	spec_shape = (None, 80)
 	video_shape = (None, 128, 128)
