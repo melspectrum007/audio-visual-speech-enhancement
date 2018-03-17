@@ -119,13 +119,13 @@ def train(args):
 	with open(normalization_cache_path, 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
-	train_mixed_spectrograms = split_and_concat(train_mixed_spectrograms, axis=1, split=SPLIT)
-	train_source_spectrograms = split_and_concat(train_source_spectrograms, axis=1, split=SPLIT)
-	val_mixed_spectrograms = split_and_concat(val_mixed_spectrograms, axis=1, split=SPLIT)
-	val_source_spectrograms = split_and_concat(val_source_spectrograms, axis=1, split=SPLIT)
+	train_mixed_spectrograms = split_and_concat(train_mixed_spectrograms, axis=-1, split=SPLIT)
+	train_source_spectrograms = split_and_concat(train_source_spectrograms, axis=-1, split=SPLIT)
+	val_mixed_spectrograms = split_and_concat(val_mixed_spectrograms, axis=-1, split=SPLIT)
+	val_source_spectrograms = split_and_concat(val_source_spectrograms, axis=-1, split=SPLIT)
 
-	train_video_samples = split_and_concat(train_video_samples, axis=2, split=SPLIT)
-	val_video_samples = split_and_concat(val_video_samples, axis=2, split=SPLIT)
+	train_video_samples = split_and_concat(train_video_samples, axis=-1, split=SPLIT)
+	val_video_samples = split_and_concat(val_video_samples, axis=-1, split=SPLIT)
 
 	# transpose freq and time axis
 	train_mixed_spectrograms = np.swapaxes(train_mixed_spectrograms, 1, 2)
