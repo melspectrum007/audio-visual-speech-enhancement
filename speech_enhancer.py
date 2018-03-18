@@ -14,7 +14,7 @@ from mediaio.audio_io import AudioSignal
 from utils import split_and_concat
 
 BASE_FOLDER = '/cs/labs/peleg/asaph/playground/avse' # todo: remove before releasing code
-SPLIT = 6
+SPLIT = 2
 
 def preprocess(args):
 	dataset_path = os.path.join(args.base_folder, 'data', args.dataset)
@@ -97,7 +97,7 @@ def train(args):
 	if not os.path.exists(model_cache_dir):
 		os.mkdir(model_cache_dir)
 
-	normalization_cache_path = os.path.join(model_cache_dir + 'normalization.pkl')
+	normalization_cache_path = os.path.join(model_cache_dir, 'normalization.pkl')
 	train_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.train_data_names]
 	val_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.val_data_names]
 
@@ -197,24 +197,24 @@ def predict(args):
 	loss = np.mean(np.sum((source_specs - enhanced_specs) ** 2, axis=(1,2)))
 	print loss
 
-	# date_dir = os.path.join(prediction_output_dir, datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
-	# os.mkdir(date_dir)
-	#
-	# print 'len:', source_specs.shape[2]
-	#
-	# for i in range(enhanced_specs.shape[0]):
-	# 	loss = np.sum((enhanced_specs[i] - source_specs[i]) ** 2)
-	#
-	# 	print i + 1, 'loss:', loss
-	#
-	# 	enhanced = dp.reconstruct_signal(enhanced_specs[i], mixed_phases[i])
-	# 	mixed = dp.reconstruct_signal(mix_specs[i], mixed_phases[i])
-	# 	source = dp.reconstruct_signal(source_specs[i], source_phases[i])
-	#
-	#
-	# 	source.save_to_wav_file(os.path.join(date_dir, 'source_' + str(i) + '.wav'))
-	# 	mixed.save_to_wav_file(os.path.join(date_dir, 'mixed_' + str(i) + '.wav'))
-	# 	enhanced.save_to_wav_file(os.path.join(date_dir, 'enhanced_' + str(i) + '.wav'))
+	date_dir = os.path.join(prediction_output_dir, datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
+	os.mkdir(date_dir)
+
+	print 'len:', source_specs.shape[2]
+
+	for i in range(enhanced_specs.shape[0]):
+		loss = np.sum((enhanced_specs[i] - source_specs[i]) ** 2)
+
+		print i + 1, 'loss:', loss
+
+		enhanced = dp.reconstruct_signal(enhanced_specs[i], mixed_phases[i])
+		mixed = dp.reconstruct_signal(mix_specs[i], mixed_phases[i])
+		source = dp.reconstruct_signal(source_specs[i], source_phases[i])
+
+
+		source.save_to_wav_file(os.path.join(date_dir, 'source_' + str(i) + '.wav'))
+		mixed.save_to_wav_file(os.path.join(date_dir, 'mixed_' + str(i) + '.wav'))
+		enhanced.save_to_wav_file(os.path.join(date_dir, 'enhanced_' + str(i) + '.wav'))
 
 	# model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
 	# prediction_output_dir = os.path.join(args.base_folder, 'out', args.model)
