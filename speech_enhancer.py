@@ -184,11 +184,13 @@ def predict(args):
 	date_dir = os.path.join(prediction_output_dir, datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
 	os.mkdir(date_dir)
 
+	print 'len:', source_specs.shape[2]
+
 	for i in range(enhanced_specs.shape[0]):
-		print i + 1
-		loss = network.evaluate(np.swapaxes(mix_specs[np.newaxis, i], 1, 2), np.rollaxis(vid[np.newaxis, i], 3, 1),
-		                        np.swapaxes(source_specs[np.newaxis, i], 1,2))
-		print 'loss:', loss
+		loss = np.sum((enhanced_specs[i] - source_specs[i]) ** 2)
+
+		print i + 1, 'loss:', loss
+
 		enhanced = dp.reconstruct_signal(enhanced_specs[i], mixed_phases[i])
 		mixed = dp.reconstruct_signal(mix_specs[i], mixed_phases[i])
 		source = dp.reconstruct_signal(source_specs[i], source_phases[i])
