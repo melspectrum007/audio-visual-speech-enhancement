@@ -191,7 +191,7 @@ def preprocess_data(speech_entries, noise_file_paths):
 
 	sample_paths = zip(speech_entries, noise_file_paths)
 
-	thread_pool = multiprocess.Pool(8)
+	thread_pool = multiprocess.Pool(16)
 	samples = thread_pool.map(try_preprocess_sample, sample_paths)
 	samples = [p for p in samples if p is not None]
 
