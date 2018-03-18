@@ -186,8 +186,8 @@ def predict(args):
 
 	for i in range(enhanced_specs.shape[0]):
 		print i + 1
-		loss = network.evaluate(np.swapaxes(mix_specs[i], 1, 2), np.rollaxis(vid[i], 3, 1),
-		                        np.swapaxes(source_specs[i], 1,2))
+		loss = network.evaluate(np.swapaxes(mix_specs[np.newaxis, i], 1, 2), np.rollaxis(vid[np.newaxis, i], 3, 1),
+		                        np.swapaxes(source_specs[np.newaxis, i], 1,2))
 		print 'loss:', loss
 		enhanced = dp.reconstruct_signal(enhanced_specs[i], mixed_phases[i])
 		mixed = dp.reconstruct_signal(mix_specs[i], mixed_phases[i])
