@@ -14,7 +14,7 @@ from mediaio.audio_io import AudioSignal
 from utils import split_and_concat
 
 BASE_FOLDER = '/cs/labs/peleg/asaph/playground/avse' # todo: remove before releasing code
-SPLIT = 2
+SPLIT = 6
 
 def preprocess(args):
 	dataset_path = os.path.join(args.base_folder, 'data', args.dataset)
