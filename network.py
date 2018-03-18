@@ -354,9 +354,8 @@ class SpeechEnhancementNetwork(object):
 		return np.squeeze(speech_spectrograms)
 
 	def evaluate(self, mixed_spectrograms, video_samples, speech_spectrograms):
-		speech_spectrograms = np.expand_dims(speech_spectrograms, -1)  # append channels axis
 		
-		loss = self.__model.evaluate(x=[mixed_spectrograms, video_samples], y=speech_spectrograms)
+		loss = self.__model.evaluate(x=[video_samples, mixed_spectrograms], y=speech_spectrograms, batch_size=1)
 
 		return loss
 
