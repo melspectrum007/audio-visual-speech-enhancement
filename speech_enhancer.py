@@ -11,6 +11,7 @@ from mediaio import ffmpeg
 from datetime import datetime
 from mediaio.video_io import VideoFileReader
 from mediaio.audio_io import AudioSignal
+from utils import split_and_concat
 
 BASE_FOLDER = '/cs/labs/peleg/asaph/playground/avse' # todo: remove before releasing code
 SPLIT = 6
@@ -174,6 +175,7 @@ def predict(args):
 	dp = utils.DataProcessor(25, 16000)
 	network = SpeechEnhancementNetwork.load(model_cache_dir)
 
+
 	enhanced_specs = network.predict(np.swapaxes(mix_specs, 1, 2), np.rollaxis(vid, 3, 1))
 	enhanced_specs = np.swapaxes(enhanced_specs, 1, 2)
 
@@ -184,6 +186,9 @@ def predict(args):
 
 	for i in range(enhanced_specs.shape[0]):
 		print i + 1
+		loss = network.evaluate(np.swapaxes(mix_specs[i], 1, 2), np.rollaxis(vid[i], 3, 1),
+		                        np.swapaxes(source_specs[i], 1,2))
+		print 'loss:', loss
 		enhanced = dp.reconstruct_signal(enhanced_specs[i], mixed_phases[i])
 		mixed = dp.reconstruct_signal(mix_specs[i], mixed_phases[i])
 		source = dp.reconstruct_signal(source_specs[i], source_phases[i])
@@ -470,13 +475,7 @@ class PredictionStorage(object):
 			np.save(os.path.join(dir_path, names[i]), spec)
 
 
-def split_and_concat(array, axis, split):
-	slc = [slice(None)] * array.ndim
-	mod = -(array.shape[axis] % split)
-	end = None if mod == 0 else mod
-	slc[axis] = slice(0, end)
 
-	return np.concatenate(np.split(array[slc], split, axis))
 
 def list_speakers(args):
 	if args.speakers is None:

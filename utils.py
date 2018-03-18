@@ -177,6 +177,15 @@ def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 		np.stack(source_phases)
 	)
 
+def split_and_concat(array, axis, split):
+	slc = [slice(None)] * array.ndim
+	mod = -(array.shape[axis] % split)
+	end = None if mod == 0 else mod
+	slc[axis] = slice(0, end)
+
+	return np.concatenate(np.split(array[slc], split, axis))
+
+
 def griffin_lim(magnitude, n_fft, hop_length, n_iterations, initial_phase=None):
 	"""Iterative algorithm for phase retrival from a magnitude spectrogram."""
 	if initial_phase is None:
