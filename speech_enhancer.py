@@ -181,6 +181,7 @@ def predict(args):
 	# vid = split_and_concat(vid, axis=-1, split=SPLIT)
 
 	with open(normalization_cache, 'rb') as normalization_fd:
+		print 'load normalizer from:', normalization_cache
 		video_normalizer = pickle.load(normalization_fd)
 
 	video_normalizer.normalize(vid)
@@ -195,7 +196,7 @@ def predict(args):
 	np.save('/cs/grad/asaph/testing/specs3.npy', enhanced_specs)
 
 	loss = np.mean(np.sum((source_specs - enhanced_specs) ** 2, axis=(1,2)))
-	print loss
+	print 'mean loss:', loss
 
 	date_dir = os.path.join(prediction_output_dir, datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
 	os.mkdir(date_dir)
