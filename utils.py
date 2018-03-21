@@ -162,9 +162,8 @@ def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
 	data_processor = DataProcessor(fps, sr)
 
 	samples = zip(video_file_paths, source_file_paths, noise_file_paths)
-	# thread_pool = multiprocess.Pool(24)
-	# preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
-	preprocessed = map(data_processor.try_preprocess_sample, samples)
+	thread_pool = multiprocess.Pool(24)
+	preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
 	preprocessed = [p for p in preprocessed if p is not None]
 
 	video_samples, mixed_spectrograms, mixed_phases, source_spectrogarms, source_phases = zip(*preprocessed)

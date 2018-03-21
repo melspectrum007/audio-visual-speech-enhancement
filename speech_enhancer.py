@@ -317,19 +317,17 @@ def generate_vocoder_dataset(args):
 
 	dataProcessor = utils.DataProcessor(args.frames_per_second, args.sampling_rate)
 
-	train_video_samples, train_mixed_spectrograms, train_source_spectrograms, train_source_phases = load_preprocessed_samples(
-		[train_preprocessed_blob_paths], max_samples=20
-	)
+	train_source_spectrograms, train_source_phases = load_preprocessed_samples([train_preprocessed_blob_paths], max_samples=None)[2:4]
 
 	vocoder_train_enhanced_spectrograms = []
 	vocoder_train_source_waveforms = []
-	for i in range(train_video_samples.shape[0]):
-		video_samples = train_video_samples[i]
-		video_normalizer.normalize(video_samples)
-		mixed_spectrograms = train_mixed_spectrograms[i]
-
-		enhanced_spectrograms = network.predict(mixed_spectrograms, video_samples)
-		enhanced_spectrogram = np.concatenate(list(enhanced_spectrograms), axis=1)
+	for i in range(train_source_spectrograms.shape[0]):
+		# video_samples = train_video_samples[i]
+		# video_normalizer.normalize(video_samples)
+		# mixed_spectrograms = train_mixed_spectrograms[i]
+		#
+		# enhanced_spectrograms = network.predict(mixed_spectrograms, video_samples)
+		# enhanced_spectrogram = np.concatenate(list(enhanced_spectrograms), axis=1)
 
 		source_spectrograms = train_source_spectrograms[i]
 		source_phase = train_source_phases[i]

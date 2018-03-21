@@ -23,7 +23,6 @@ class SpeechEnhancementNetwork(object):
 		self.__model = model
 		self.__fit_model = fit_model
 
-
 	@classmethod
 	def __build_res_block(cls, input_shape, vid_shape, num_filters, kernel_size, number=None):
 		input_spec = Input(input_shape)
@@ -47,98 +46,6 @@ class SpeechEnhancementNetwork(object):
 			model = Model([input_spec, vid_input], x)
 
 		return model
-
-	@classmethod
-	def build(cls, vid_shape, spec_shape, num_filters, kernel_size, num_blocks, num_gpus, model_cache_dir):
-
-		input_vid = Input(vid_shape)
-		input_spec = Input(spec_shape)
-
-		vid_encoding = cls.__build_video_encoder(vid_shape)(input_vid)
-
-		x = Concatenate()([input_spec, vid_encoding])
-
-		x = Conv1D(num_filters, kernel_size, padding='same')(x)
-		x = BatchNormalization()(x)
-		x = Activation('relu')(x)
-
-		for i in range(num_blocks):
-			x = cls.__build_res_block(spec_shape,
-									  vid_shape=spec_shape,
-									  num_filters=num_filters,
-									  kernel_size=kernel_size,
-									  number=i)([x, vid_encoding])
-
-		if num_gpus > 1:
-			with tf.device('/cpu:0'):
-				model = Model(inputs=[input_vid, input_spec], outputs=[x], name='Net')
-				fit_model = multi_gpu_model(model, gpus=num_gpus)
-		else:
-			model = Model(inputs=[input_vid, input_spec], outputs=[x], name='Net')
-			fit_model = model
-
-		optimizer = optimizers.Adam(lr=5e-4)
-		fit_model.compile(loss='mean_squared_error', optimizer=optimizer)
-
-		print 'Net'
-		model.summary()
-
-		return SpeechEnhancementNetwork(model, fit_model, num_gpus, model_cache_dir)
-
-	# @classmethod
-	# def __build_encoder(cls, audio_spectrogram_shape, video_shape):
-	# 	audio_input = Input(shape=audio_spectrogram_shape)
-	# 	video_input = Input(shape=video_shape)
-	#
-	# 	audio_encoder = cls.__build_audio_encoder(audio_spectrogram_shape)
-	# 	audio_embedding = audio_encoder(audio_input)
-	#
-	# 	video_encoder = cls.__build_video_encoder(video_shape)
-	# 	video_embedding = video_encoder(video_input)
-	#
-	# 	shared_embeding = Concatenate()([audio_embedding, video_embedding])
-	#
-	# 	model = Model(inputs=[audio_input, video_input], outputs=shared_embeding, name='Encoder')
-	# 	print 'Encoder'
-	# 	model.summary()
-	#
-	# 	return model
-	#
-	# @staticmethod
-	# def __build_audio_encoder(audio_spectrogram_shape):
-	# 	audio_input = Input(shape=audio_spectrogram_shape)
-	#
-	# 	x = Permute((2,1))(audio_input)
-	#
-	# 	x = Conv1D(64, kernel_size=5, padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Conv1D(64, kernel_size=5, padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Conv1D(128, kernel_size=3, padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Conv1D(128, kernel_size=3, padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Conv1D(256, kernel_size=3, padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	x = Conv1D(256, kernel_size=3, padding='same')(x)
-	# 	x = BatchNormalization()(x)
-	# 	x = LeakyReLU()(x)
-	#
-	# 	model = Model(inputs=audio_input, outputs=x, name='Audio_Encoder')
-	# 	print 'Audio Encoder'
-	# 	model.summary()
-	#
-	# 	return model
 
 	@staticmethod
 	def __build_video_encoder(video_shape):
@@ -185,143 +92,107 @@ class SpeechEnhancementNetwork(object):
 
 		x = UpSampling1D(4)(x)
 
-
-		# x = Convolution3D(80, kernel_size=(5, 5, 3), padding='same')(video_input)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
-		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
-		#
-		# x = Convolution3D(80, kernel_size=(5, 5, 3), padding='same')(x)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
-		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
-		#
-		# x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
-		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
-		#
-		# x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
-		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
-		#
-		# x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
-		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
-		#
-		# x = Convolution3D(80, kernel_size=(3, 3, 3), padding='same')(x)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
-		# x = MaxPooling3D(pool_size=(2, 2, 1), strides=(2, 2, 1), padding='same')(x)
-		# x = Dropout(0.25)(x)
-		#
-		# x = Convolution3D(80, kernel_size=(2, 2, 1), padding='valid')(x)
-		# x = BatchNormalization()(x)
-		# x = LeakyReLU()(x)
-		# x = Dropout(0.25)(x)
-
-		# Squeeze = Lambda(lambda a: K.squeeze(a, axis=1))
-
-		# x = Squeeze(Squeeze(x))
-
-		# x = UpSampling1D(4)(x)
-
 		model = Model(inputs=video_input, outputs=x, name='Video_Encoder')
 		print 'Video Encoder'
 		model.summary()
 
 		return model
 
-	# @staticmethod
-	# def __build_audio_decoder(spectogram_shape):
-	# 	audio_spec = Input(spectogram_shape)
-	#
-	# 	out_spec = TimeDistributed(Dense(256), input_shape=spectogram_shape)(audio_spec)
-	# 	out_spec = TimeDistributed(Dense(80), input_shape=spectogram_shape)(out_spec)
-	#
-	# 	x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(out_spec)
-	# 	x = BatchNormalization()(x)
-	#
-	# 	x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
-	# 	x = BatchNormalization()(x)
-	#
-	# 	x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
-	# 	x = BatchNormalization()(x)
-	#
-	# 	x = Conv1D(80, kernel_size=5, padding='same', activation='tanh')(x)
-	# 	x = BatchNormalization()(x)
-	#
-	# 	x = Conv1D(80, kernel_size=5, padding='same')(x)
-	#
-	# 	x = Add()([out_spec, x])
-	#
-	# 	model = Model(inputs=audio_spec, outputs=x, name='Audio_Decoder')
-	# 	print 'Audio Decoder'
-	# 	model.summary()
-	#
-	# 	return model
-	#
-	# @staticmethod
-	# def __build_attention(shared_embeding_shape):
-	# 	shared_input = Input(shared_embeding_shape)
-	#
-	# 	x = Bidirectional(LSTM(256, return_sequences=True))(shared_input)
-	# 	# x = Bidirectional(LSTM(256, return_sequences=True))(x)
-	#
-	# 	mask = LSTM(256, activation='relu', return_sequences=True)(x)
-	#
-	# 	model = Model(inputs=shared_input, outputs=mask, name='Attention')
-	# 	print 'Attention'
-	# 	model.summary()
-	#
-	# 	return model
+	@staticmethod
+	def __build_upsample_net(spec_shape):
+		spec = Input(spec_shape)
 
+		x = Lambda(lambda a: K.expand_dims(a, axis=1))(spec)
 
-	# @classmethod
-	# def build(cls, audio_spectrogram_shape, video_shape, num_gpus=1):
-	# 	# append channels axis
-	#
-	# 	video_shape = list(video_shape)
-	# 	video_shape.append(1)
-	#
-	# 	encoder = cls.__build_encoder(audio_spectrogram_shape, video_shape)
-	# 	attention = cls.__build_attention((None, 384))
-	# 	decoder = cls.__build_audio_decoder((None, 256))
-	#
-	# 	input_spec = Input(shape=audio_spectrogram_shape)
-	# 	input_frames = Input(shape=video_shape)
-	#
-	# 	shared_embeding = encoder([input_spec, input_frames])
-	#
-	# 	coarse_output_spec = attention(shared_embeding)
-	# 	fine_output_spec = decoder(coarse_output_spec)
-	#
-	# 	fine_output_spec = Permute((2,1))(fine_output_spec)
-	# 	# fine_output_spec = Permute((2,1))(coarse_output_spec)
-	#
-	# 	optimizer = optimizers.adam(lr=5e-4, clipnorm=1.0)
-	#
-	# 	if num_gpus > 1:
-	# 		with tf.device('/cpu:0'):
-	# 			model = Model(inputs=[input_spec, input_frames], outputs=[fine_output_spec], name='Net')
-	# 			fit_model = multi_gpu_model(model, gpus=num_gpus)
-	# 	else:
-	# 		model = Model(inputs=[input_spec, input_frames], outputs=[fine_output_spec], name='Net')
-	# 		fit_model = model
-	#
-	# 	fit_model.compile(loss='mean_squared_error', optimizer=optimizer)
-	#
-	# 	print 'Net'
-	# 	model.summary()
-	#
-	# 	return SpeechEnhancementNetwork(model, fit_model, num_gpus)
+		x = Deconv2D(spec_shape[1], kernel_size=(1, 11), strides=(1, 2), padding='same')(x)
+		x = Deconv2D(spec_shape[1], kernel_size=(1, 11), strides=(1, 4), padding='same')(x)
+		x = Deconv2D(spec_shape[1], kernel_size=(1, 11), strides=(1, 4), padding='same')(x)
+		x = Deconv2D(spec_shape[1], kernel_size=(1, 11), strides=(1, 5), padding='same')(x)
+
+		x = Lambda(lambda a: K.squeeze(a, axis=1))(x)
+
+		model = Model(inputs=spec, outputs=x, name='Upsample_Net')
+
+		print 'Upsample Net'
+		model.summary()
+
+		return model
+
+	@staticmethod
+	def __build_dilated_conv_block(layer_input_shape, kernel_size, dilation, num_dilated_filters, num_skip_filters,
+								   number=None):
+		layer_input = Input(layer_input_shape)
+
+		x = Conv1D(num_dilated_filters, kernel_size, padding='same', dilation_rate=dilation)(layer_input)
+		x = LeakyReLU()(x)
+
+		# skip = Conv1D(num_skip_filters, kernel_size=1, padding='same')(x)
+		residual = Conv1D(num_skip_filters, kernel_size=1, padding='same')(x)
+
+		output = Add()([layer_input, residual])
+
+		if number:
+			name = 'dilated_block_' + str(number)
+			model = Model(inputs=[layer_input], outputs=[output], name=name)
+		else:
+			model = Model(inputs=[layer_input], outputs=[output])
+
+		if number == 1:
+			print 'Dilated Conv Block'
+			model.summary()
+
+		return model
+
+	@classmethod
+	def build(cls, vid_shape, spec_shape, num_filters, kernel_size, num_blocks, num_gpus, num_probs, model_cache_dir):
+
+		input_vid = Input(vid_shape)
+		input_spec = Input(spec_shape)
+
+		vid_encoding = cls.__build_video_encoder(vid_shape)(input_vid)
+
+		spec = Concatenate()([input_spec, vid_encoding])
+
+		spec = Conv1D(num_filters, kernel_size, padding='same')(spec)
+		spec = BatchNormalization()(spec)
+		spec = Activation('relu')(spec)
+
+		for i in range(num_blocks):
+			spec = cls.__build_res_block(spec_shape,
+									  vid_shape=spec_shape,
+									  num_filters=num_filters,
+									  kernel_size=kernel_size,
+									  number=i)([spec, vid_encoding])
+
+		waveform_logits = cls.__build_upsample_net(spec_shape)(spec)
+
+		waveform_logits = TimeDistributed(Dense(num_probs))(waveform_logits)
+
+		waveform_shape = (spec_shape[0] * 160, num_probs) if spec_shape[0] is not None else (None, num_probs)
+
+		for i in range(num_blocks):
+			waveform_logits = cls.__build_dilated_conv_block(waveform_shape,
+															 kernel_size=2,
+															 dilation=(2**i) % 10,
+															 num_dilated_filters=num_probs,
+															 num_skip_filters=num_probs,
+															 number=i+1)(waveform_logits)
+
+		if num_gpus > 1:
+			with tf.device('/cpu:0'):
+				model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveform_logits], name='Net')
+				fit_model = multi_gpu_model(model, gpus=num_gpus)
+		else:
+			model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveform_logits], name='Net')
+			fit_model = model
+
+		optimizer = optimizers.Adam(lr=5e-4)
+		fit_model.compile(loss=['mean_squared_error', 'categorical_crossentropy'], optimizer=optimizer)
+
+		print 'Net'
+		model.summary()
+
+		return SpeechEnhancementNetwork(model, fit_model, num_gpus, model_cache_dir)
 
 	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
 			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms):
@@ -366,12 +237,6 @@ class SpeechEnhancementNetwork(object):
 		except Exception as e:
 			print(e)
 
-	# def save(self, model_cache_dir):
-	# 	model_cache = ModelCache(model_cache_dir)
-	#
-	# 	self.__model.save(model_cache.model_path())
-	# 	self.__model.save(model_cache.model_backup_path())
-
 	@staticmethod
 	def load(model_cache_dir):
 		model_cache = ModelCache(model_cache_dir)
@@ -397,4 +262,4 @@ class ModelCache(object):
 if __name__ == '__main__':
 	# net = SpeechEnhancementNetwork.build((80, None), (128, 128, None), num_gpus=0)
 	net = SpeechEnhancementNetwork.build((None, 128, 128), (None, 80), num_filters=80, num_blocks=15, kernel_size=5, num_gpus=1,
-										 model_cache_dir=None)
+										 model_cache_dir=None, num_probs=256)

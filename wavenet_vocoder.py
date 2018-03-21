@@ -255,7 +255,7 @@ if __name__ == '__main__':
 						 num_dilated_blocks=20,
 						 num_skip_channels=256,
 						 num_conditioning_channels=10,
-						 spec_shape=(80, None))
+						 spec_shape=(80, 100))
 
 
 # def predict_one_sample(self, enhanced_spectrograms):
