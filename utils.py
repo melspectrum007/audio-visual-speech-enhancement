@@ -5,6 +5,8 @@ import os, subprocess, multiprocess
 from mediaio.audio_io import AudioSignal, AudioMixer
 from mediaio.video_io import VideoFileReader
 from facedetection.face_detection import FaceDetector
+from collections import namedtuple
+from datetime import datetime
 
 MOUTH_WIDTH = 128
 MOUTH_HEIGHT = 128
@@ -56,23 +58,27 @@ class DataProcessor(object):
 
 		return video_sample, mixed_spectrogram, mixed_phase
 
-	def preprocess_label(self, source):
+	def preprocess_source(self, source):
 		return self.get_mag_phase(source.get_data())
 
-	def preprocess_sample(self, video_file_path, source_file_path, noise_file_path):
-		print ('preprocessing %s, %s' % (source_file_path, noise_file_path))
-		frames = get_frames(video_file_path)
-		mixed_signal = mix_source_noise(source_file_path, noise_file_path)
-		source_signal = AudioSignal.from_wav_file(source_file_path)
+	def preprocess_sample(self, speech_entry, noise_file_path):
+		print ('preprocessing %s, %s' % (speech_entry.audio_path, noise_file_path))
+		metadata = MetaData(speech_entry.speaker_id, speech_entry.video_path, speech_entry.audio_path, noise_file_path, self.video_fps, self.audio_sr)
 
+		frames = get_frames(speech_entry.video_path)
+		mixed_signal = mix_source_noise(speech_entry.audio_path, noise_file_path)
+		source_signal = AudioSignal.from_wav_file(speech_entry.audio_path)
+		
 		video_sample, mixed_spectrogram, mixed_phase = self.preprocess_inputs(frames, mixed_signal)
-		label_spectrogram, label_phase = self.preprocess_label(source_signal)
+		source_spectrogram, source_phase = self.preprocess_source(source_signal)
+		source_waveform = source_signal.get_data().astype('f') 
 
-		return self.truncate_sample_to_same_length(video_sample, mixed_spectrogram, mixed_phase, label_spectrogram, label_phase)
+		return self.truncate_sample_to_same_length(video_sample, mixed_spectrogram, mixed_phase, source_spectrogram, source_phase, 
+												   source_waveform), metadata
 
-	def truncate_sample_to_same_length(self, video, mixed_spec, mixed_phase, label_spec, label_phase):
-		lenghts = [video.shape[-1] * self.audio_bins_per_frame, mixed_spec.shape[-1], mixed_phase.shape[-1], label_spec.shape[-1],
-				   label_phase.shape[-1]]
+	def truncate_sample_to_same_length(self, video, mixed_spec, mixed_phase, source_spec, source_phase, source_waveform):
+		lenghts = [video.shape[-1] * self.audio_bins_per_frame, mixed_spec.shape[-1], mixed_phase.shape[-1], source_spec.shape[-1],
+				   source_phase.shape[-1]]
 
 		min_audio_frames = min(lenghts)
 
@@ -80,7 +86,7 @@ class DataProcessor(object):
 		min_audio_frames = int(min_audio_frames / self.audio_bins_per_frame) * self.audio_bins_per_frame
 
 		return video[:,:,:min_audio_frames/self.audio_bins_per_frame], mixed_spec[:,:min_audio_frames], mixed_phase[:, :min_audio_frames], \
-			   label_spec[:,:min_audio_frames], label_phase[:, :min_audio_frames]
+			   source_spec[:,:min_audio_frames], source_phase[:, :min_audio_frames], source_waveform[:min_audio_frames * self.hop]
 
 
 	def try_preprocess_sample(self, sample):
@@ -155,26 +161,28 @@ def strip_audio(video_path):
 
 	return signal
 
-def preprocess_data(video_file_paths, source_file_paths, noise_file_paths):
-	with VideoFileReader(video_file_paths[0]) as reader:
+def preprocess_data(speech_entries, noise_file_paths):
+	with VideoFileReader(speech_entries[0].video_path) as reader:
 		fps = reader.get_frame_rate()
-	sr = AudioSignal.from_wav_file(source_file_paths[0]).get_sample_rate()
+	sr = AudioSignal.from_wav_file(speech_entries[0].audio_path).get_sample_rate()
 	data_processor = DataProcessor(fps, sr)
 
-	samples = zip(video_file_paths, source_file_paths, noise_file_paths)
-	# thread_pool = multiprocess.Pool(24)
-	# preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
-	preprocessed = map(data_processor.try_preprocess_sample, samples)
+	samples = zip(speech_entries, noise_file_paths)
+	thread_pool = multiprocess.Pool(24)
+	preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
 	preprocessed = [p for p in preprocessed if p is not None]
 
-	video_samples, mixed_spectrograms, mixed_phases, source_spectrogarms, source_phases = zip(*preprocessed)
+	processed_samples, metadatas = zip(*preprocessed)
+	video_samples, mixed_spectrograms, mixed_phases, source_spectrogarms, source_phases, source_waveforms = zip(*processed_samples)
 
 	return (
 		np.stack(video_samples),
 		np.stack(mixed_spectrograms),
 		np.stack(mixed_phases),
 		np.stack(source_spectrogarms),
-		np.stack(source_phases)
+		np.stack(source_phases),
+		np.stack(source_waveforms),
+		metadatas
 	)
 
 def split_and_concat(array, axis, split):
@@ -228,3 +236,103 @@ class AudioNormalizer(object):
 	def denormalize(self, spectrograms):
 		spectrograms *= self.__std
 		spectrograms += self.__mean
+
+MetaData = namedtuple('MetaData',[
+	'speaker_id',
+	'video_path',
+	'audio_path',
+	'noise_path',
+	'video_frame_rate',
+	'audio_sampling_rate'
+])
+
+class AssetManager:
+
+	def __init__(self, base_dir):
+		self.__base_dir = base_dir
+
+		self.__cache_dir = os.path.join(self.__base_dir, 'cache')
+		if not os.path.exists(self.__cache_dir):
+			os.mkdir(self.__cache_dir)
+
+		self.__preprocessed_dir = os.path.join(self.__cache_dir, 'preprocessed')label
+		if not os.path.exists(self.__preprocessed_dir):
+			os.mkdir(self.__preprocessed_dir)
+
+		self.__models_dir = os.path.join(self.__cache_dir, 'models')
+		if not os.path.exists(self.__models_dir):
+			os.mkdir(self.__models_dir)
+
+		self.__out_dir = os.path.join(self.__base_dir, 'out')
+		if not os.path.exists(self.__out_dir):
+			os.mkdir(self.__out_dir)
+
+		self.__data_dir = os.path.join(self.__base_dir, 'data')
+		if not os.path.exists(self.__data_dir):
+			os.mkdir(self.__data_dir)
+
+	def get_data_set_dir(self, data_set):
+		return os.path.join(self.__data_dir, data_set)
+
+	def create_preprocessed_data_dir(self, data_name):
+		preprocessed_data_dir = os.path.join(self.__preprocessed_dir, data_name)
+		if not os.path.exists(preprocessed_data_dir):
+			os.mkdir(preprocessed_data_dir)
+
+	def get_preprocessed_blob_data_path(self, data_name):
+		return os.path.join(self.__preprocessed_dir, data_name, 'data.npz')
+
+	def get_preprocessed_blob_metadata_path(self, data_name):
+		return os.path.join(self.__preprocessed_dir, data_name, 'metadata.pkl')
+
+	def create_model(self, model_name):
+		model_dir = os.path.join(self.__models_dir, model_name)
+		if not os.path.exists(model_dir):
+			os.mkdir(model_dir)
+
+	def get_model_cache_path(self, model_name):
+		model_dir = os.path.join(self.__models_dir, model_name)
+		return os.path.join(model_dir, 'model.h5py')
+
+	def get_normalization_cache_path(self, model_name):
+		model_dir = os.path.join(self.__models_dir, model_name)
+		return os.path.join(model_dir, 'normalization.pkl')
+
+	def get_tensorboard_dir(self, model_name):
+		model_dir = os.path.join(self.__models_dir, model_name)
+		tensorboard_dir = os.path.join(model_dir, 'tensorboard')
+
+		if not os.path.exists(tensorboard_dir):
+			os.mkdir(tensorboard_dir)
+
+		return tensorboard_dir
+
+	def create_prediction_dir(self, model_name):
+		pred_dir = os.path.join(self.__out_dir, model_name)
+		if not os.path.exists(pred_dir):
+			os.mkdir(pred_dir)
+
+	def get_prediction_dir(self, model_name):
+		return os.path.join(self.__out_dir, model_name)
+
+	def create_prediction_storage(self, model_name, data_name):
+		prediction_dir = os.path.join(self.__out_dir, model_name, data_name)
+		if not os.path.exists(prediction_dir):
+			os.makedirs(prediction_dir)
+
+		return prediction_dir
+
+
+class ModelCache(object):
+
+	def __init__(self, cache_dir):
+		self.__cache_dir = cache_dir
+
+	def model_path(self):
+		return os.path.join(self.__cache_dir, 'model.h5py')
+
+	def model_backup_path(self):
+		return os.path.join(self.__cache_dir, 'model_backup.h5py')
+
+	def tensorboard_path(self):
+		return os.path.join(self.__cache_dir, 'tensorboard', datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))

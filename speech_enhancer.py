@@ -1,58 +1,55 @@
 
-import argparse, os, logging, pickle
-import numpy as np
-import utils
+import argparse, pickle
 
 from dataset import AudioVisualDataset, AudioDataset
 from network import SpeechEnhancementNetwork
 from wavenet_vocoder import WavenetVocoder
 from shutil import copy2
 from mediaio import ffmpeg
-from datetime import datetime
-from mediaio.video_io import VideoFileReader
-from mediaio.audio_io import AudioSignal
-from utils import split_and_concat
+from utils import *
 
 BASE_FOLDER = '/cs/labs/peleg/asaph/playground/avse' # todo: remove before releasing code
 SPLIT = 6
 
 def preprocess(args):
-	dataset_path = os.path.join(args.base_folder, 'data', args.dataset)
-	cache_dir = os.path.join(args.base_folder, 'cache')
-	if not os.path.exists(cache_dir):
-		os.mkdir(cache_dir)
-	preprocessed_dir = os.path.join(cache_dir, 'preprocessed')
-	if not os.path.exists(preprocessed_dir):
-		os.mkdir(preprocessed_dir)
+	assets = AssetManager(args.base_folder)
+	assets.create_preprocessed_data_dir(args.data_name)
 
-	preprocessed_blob_path = os.path.join(preprocessed_dir, args.data_name + '.npz')
+	dataset_path = assets.get_data_set_dir(args.dataset)
 
 	speaker_ids = list_speakers(args)
 
-	video_file_paths, source_file_paths, noise_file_paths = list_data(
+	speech_entries, noise_file_paths = list_data(
 		dataset_path, speaker_ids, args.noise_dirs, max_files=args.number_of_samples
 	)
 
-	video_samples, mixed_spectrograms, mixed_phases, source_spectrograms, source_phases = utils.preprocess_data(
-		video_file_paths, source_file_paths, noise_file_paths
-	)
+	video_samples, mixed_spectrograms, mixed_phases, source_spectrograms, source_phases, source_waveforms, metadatas = preprocess_data(
+		speech_entries, noise_file_paths)
 
 	np.savez(
-		preprocessed_blob_path,
+		assets.get_preprocessed_blob_data_path(args.data_name),
 		video_samples=video_samples,
 		mixed_spectrograms=mixed_spectrograms,
 		mixed_phases=mixed_phases,
 		source_spectrograms=source_spectrograms,
 		source_phases=source_phases,
+		source_waveforms=source_waveforms
 	)
+
+	with open(assets.get_preprocessed_blob_metadata_path(args.data_name), 'wb') as preprocessed_fd:
+		pickle.dump(metadatas, preprocessed_fd)
 
 
 def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
+	if type(preprocessed_blob_paths) is not list:
+		preprocessed_blob_paths = [preprocessed_blob_paths]
+
 	all_video_samples = []
 	all_mixed_spectrograms = []
 	all_source_spectrograms = []
 	all_source_phases = []
 	all_mixed_phases = []
+	all_waveforms = []
 
 	for preprocessed_blob_path in preprocessed_blob_paths:
 		print('loading preprocessed samples from %s' % preprocessed_blob_path)
@@ -61,48 +58,33 @@ def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
 			all_video_samples.append(data['video_samples'][:max_samples])
 			all_mixed_spectrograms.append(data['mixed_spectrograms'][:max_samples])
 			all_source_spectrograms.append(data['source_spectrograms'][:max_samples])
-			all_source_phases.append(data['source_phases'][:max_samples])
 			all_mixed_phases.append(data['mixed_phases'][:max_samples])
+			all_source_phases.append(data['source_phases'][:max_samples])
+			all_waveforms.append(data['source_waveforms'][:max_samples])
 
 	video_samples = np.concatenate(all_video_samples, axis=0)
 	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
 	source_spectrograms = np.concatenate(all_source_spectrograms, axis=0)
 	source_phases = np.concatenate(all_source_phases, axis=0)
 	mixed_phases = np.concatenate(all_mixed_phases, axis=0)
-
-	permutation = np.random.permutation(video_samples.shape[0])
-	video_samples = video_samples[permutation]
-	mixed_spectrograms = mixed_spectrograms[permutation]
-	source_spectrograms = source_spectrograms[permutation]
-	source_phases = source_phases[permutation]
-	mixed_phases = mixed_phases[permutation]
+	source_waveforms = np.concatenate(all_waveforms, axis=0)
 
 	return (
 		video_samples,
 		mixed_spectrograms,
 		source_spectrograms,
 		source_phases,
-		mixed_phases
+		mixed_phases,
+		source_waveforms
 	)
 
 
 def train(args):
-	cache_dir = os.path.join(args.base_folder, 'cache')
-	if not os.path.exists(cache_dir):
-		os.mkdir(cache_dir)
-	models_dir = os.path.join(cache_dir, 'models')
-	if not os.path.exists(models_dir):
-		os.mkdir(models_dir)
-	model_cache_dir = os.path.join(models_dir, args.model)
-	if not os.path.exists(model_cache_dir):
-		os.mkdir(model_cache_dir)
+	assets = AssetManager(args.base_folder)
+	assets.create_model(args.model_name)
 
-	normalization_cache_path = os.path.join(model_cache_dir, 'normalization.pkl')
-	train_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.train_data_names]
-	val_preprocessed_blob_paths = [os.path.join(args.base_folder, 'cache/preprocessed', p + '.npz') for p in args.val_data_names]
-
-	# if args.number_of_samples is None:
-	# 	num_train = 900
+	train_preprocessed_blob_paths = [assets.get_preprocessed_blob_data_path(p) for p in args.train_data_names]
+	val_preprocessed_blob_paths = [assets.get_preprocessed_blob_data_path(p) for p in args.val_data_names]
 
 	train_video_samples, train_mixed_spectrograms, train_source_spectrograms = load_preprocessed_samples(
 		train_preprocessed_blob_paths, max_samples=args.number_of_samples
@@ -113,11 +95,11 @@ def train(args):
 	)[:3]
 
 	print 'normalizing video samples...'
-	video_normalizer = utils.VideoNormalizer(train_video_samples)
+	video_normalizer = VideoNormalizer(train_video_samples)
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(val_video_samples)
 
-	with open(normalization_cache_path, 'wb') as normalization_fd:
+	with open(assets.get_normalization_cache_path(args.model_name), 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
 	num_frames = train_video_samples.shape[3]
@@ -153,7 +135,7 @@ def train(args):
 											 kernel_size=7,
 											 num_blocks=20,
 											 num_gpus=args.gpus,
-											 model_cache_dir=model_cache_dir
+											 model_cache_dir=assets.get_model_cache_path(args.model_name)
 											 )
 	network.train(
 		train_mixed_spectrograms, train_video_samples, train_source_spectrograms,
@@ -164,14 +146,18 @@ def train(args):
 
 
 def predict(args):
-	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
-	prediction_output_dir = os.path.join(args.base_folder, 'out', args.model)
-	normalization_cache = os.path.join(model_cache_dir, 'normalization.pkl')
-	testset_path = os.path.join(args.base_folder, 'cache/preprocessed', args.data_name + '.npz')
-	if not os.path.exists(prediction_output_dir):
-		os.mkdir(prediction_output_dir)
+	assets = AssetManager(args.base_folder)
+	assets.create_prediction_dir(args.model_name)
 
-	vid, mix_specs, source_specs, source_phases, mixed_phases = load_preprocessed_samples([testset_path], max_samples=args.number_of_samples)
+	testset_path = assets.get_preprocessed_blob_data_path(args.data_name)
+	metadata_path = assets.get_preprocessed_blob_metadata_path(args.data_name)
+
+	vid, mix_specs, source_specs, source_phases, mixed_phases, source_waveforms = load_preprocessed_samples(testset_path,
+																									  max_samples=args.number_of_samples)
+
+	with open(metadata_path, 'rb') as metadata_fd:
+		print 'loading metadata...'
+		metadatas = pickle.load(metadata_fd)
 
 	# num_frames = vid.shape[3]
 	# num_audio_bins = num_frames / SPLIT * 4 * SPLIT
@@ -180,129 +166,93 @@ def predict(args):
 	# source_specs = split_and_concat(source_specs[..., :num_audio_bins], axis=-1, split=SPLIT)
 	# vid = split_and_concat(vid, axis=-1, split=SPLIT)
 
-	with open(normalization_cache, 'rb') as normalization_fd:
-		print 'load normalizer from:', normalization_cache
+	with open(assets.get_normalization_cache_path(args.model_name), 'rb') as normalization_fd:
+		print 'load normalizer from:', assets.get_normalization_cache_path(args.model_name)
 		video_normalizer = pickle.load(normalization_fd)
 
 	video_normalizer.normalize(vid)
 
-	dp = utils.DataProcessor(25, 16000)
-	network = SpeechEnhancementNetwork.load(model_cache_dir)
-
+	dp = DataProcessor(25, 16000)
+	network = SpeechEnhancementNetwork.load(assets.get_model_cache_path(args.model_name))
 
 	enhanced_specs = network.predict(np.swapaxes(mix_specs, 1, 2), np.rollaxis(vid, 3, 1))
 	enhanced_specs = np.swapaxes(enhanced_specs, 1, 2)
 
 	np.save('/cs/grad/asaph/testing/specs3.npy', enhanced_specs)
 
-	loss = np.mean(np.sum((source_specs - enhanced_specs) ** 2, axis=(1,2)))
-	print 'mean loss:', loss
+	mse  = np.mean(np.sum(np.square(source_specs.flatten() - enhanced_specs.flatten())))
+	mae  = np.mean(np.sum(np.abs(source_specs.flatten() - enhanced_specs.flatten())))
+	rmse = np.sqrt(np.mean(np.sum(np.square(source_specs.flatten() - enhanced_specs.flatten()))))
+	mean_mean  = np.mean(np.square(source_specs.flatten() - enhanced_specs.flatten()))
 
-	date_dir = os.path.join(prediction_output_dir, datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
+	print 'time bins:', source_specs.shape[2]
+	print 'mse loss:', mse
+	print 'mae loss:', mae
+	print 'rmse loss:', rmse
+	print 'mean mean loss:', mean_mean
+
+	date_dir = os.path.join(assets.get_prediction_dir(args.model_name), datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
 	os.mkdir(date_dir)
 
-	print 'len:', source_specs.shape[2]
-
 	for i in range(enhanced_specs.shape[0]):
-		loss = np.sum((enhanced_specs[i] - source_specs[i]) ** 2)
+		metadata = metadatas[i]
+		audio_name = os.path.splitext(metadata.audio_path)[0]
+		noise_name = os.path.splitext(metadata.noise_path)[0]
 
-		print i + 1, 'loss:', loss
+		sample_dir = os.path.join(date_dir, audio_name + '_' + noise_name)
+		os.mkdir(sample_dir)
 
 		enhanced = dp.reconstruct_signal(enhanced_specs[i], mixed_phases[i])
 		mixed = dp.reconstruct_signal(mix_specs[i], mixed_phases[i])
-		source = dp.reconstruct_signal(source_specs[i], source_phases[i])
+		source = AudioSignal(source_waveforms[i].astype(np.int16), metadata.audio_sampling_rate)
 
+		source_audio_path = os.path.join(sample_dir, 'source.wav')
+		mixed_audio_path = os.path.join(sample_dir, 'mixed.wav')
+		enhanced_audio_path = os.path.join(sample_dir, 'enhanced.wav')
 
-		source.save_to_wav_file(os.path.join(date_dir, 'source_' + str(i) + '.wav'))
-		mixed.save_to_wav_file(os.path.join(date_dir, 'mixed_' + str(i) + '.wav'))
-		enhanced.save_to_wav_file(os.path.join(date_dir, 'enhanced_' + str(i) + '.wav'))
+		source.save_to_wav_file(source_audio_path)
+		mixed.save_to_wav_file(mixed_audio_path)
+		enhanced.save_to_wav_file(enhanced_audio_path)
 
-	# model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
-	# prediction_output_dir = os.path.join(args.base_folder, 'out', args.model)
-	# normalization_cache = os.path.join(model_cache_dir, 'normalization.pkl')
-	# dataset_path = os.path.join(args.base_folder, 'data', args.dataset, 'test')
-	# if not os.path.exists(prediction_output_dir):
-	# 	os.mkdir(prediction_output_dir)
-	#
-	# storage = PredictionStorage(prediction_output_dir)
-	# network = SpeechEnhancementNetwork.load(model_cache_dir)
-	#
-	# with open(normalization_cache, 'rb') as normalization_fd:
-	# 	video_normalizer = pickle.load(normalization_fd)
-	#
-	# speaker_ids = list_speakers(args)
-	# for speaker_id in speaker_ids:
-	# 	video_file_paths, speech_file_paths, noise_file_paths = list_data(
-	# 		dataset_path, [speaker_id], args.noise_dirs, max_files=5, shuffle=False
-	# 	)
-	#
-	# 	fps = VideoFileReader(video_file_paths[0]).get_frame_rate()
-	# 	sr = AudioSignal.from_wav_file(speech_file_paths[0]).get_sample_rate()
-	#
-	# 	data_processor = utils.DataProcessor(fps, sr)
-	#
-	# 	for video_file_path, speech_file_path, noise_file_path in zip(video_file_paths, speech_file_paths, noise_file_paths):
-	# 		try:
-	# 			print('predicting (%s, %s)...' % (video_file_path, noise_file_path))
-	# 			mixed_signal = utils.mix_source_noise(speech_file_path, noise_file_path)
-	# 			video_samples, mixed_spectrograms, label_spectrograms = data_processor.preprocess_sample(
-	# 				video_file_path, speech_file_path, noise_file_path)[:3]
-	#
-	# 			video_normalizer.normalize(video_samples)
-	#
-	# 			# loss = network.evaluate(mixed_spectrograms, video_samples, speech_spectrograms)
-	# 			# print('loss: %f' % loss)
-	# 			enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_samples)
-	#
-	# 			enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
-	# 			mixed_spec = data_processor.get_mag_phase(mixed_signal.get_data())[0]
-	# 			label_spec = np.concatenate(list(label_spectrograms), axis=1)
-	#
-	# 			predicted_speech_signal = data_processor.reconstruct_signal(enhanced_spec, mixed_signal, use_griffin_lim=False)
-	#
-	# 			sample_dir = storage.save_prediction(
-	# 				speaker_id, video_file_path, noise_file_path, speech_file_path,
-	# 				mixed_signal, predicted_speech_signal, enhanced_spec
-	# 			)
-	#
-	# 			storage.save_spectrograms([enhanced_spec, mixed_spec, label_spec], ['enhanced', 'mixed', 'source'], sample_dir)
-	#
-	# 		except Exception:
-	# 			logging.exception('failed to predict %s. skipping' % video_file_path)
+		video_extension = os.path.splitext(os.path.basename(metadata.video_path))[1]
+		mixture_video_path = os.path.join(sample_dir, 'mixed' + video_extension)
+		enhanced_speech_video_path = os.path.join(sample_dir, 'enhanced' + video_extension)
 
+		ffmpeg.merge(metadata.video_path, mixed_audio_path, mixture_video_path)
+		ffmpeg.merge(metadata.video_path, enhanced_audio_path, enhanced_speech_video_path)
 
-def test(args):
-	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
-	normalization_path = os.path.join(model_cache_dir, 'normalization.pkl')
-
-	network = SpeechEnhancementNetwork.load(model_cache_dir)
-	with open(normalization_path, 'rb') as normalization_fd:
-		video_normalizer = pickle.load(normalization_fd)
-
-	input_paths = args.paths
-
-	for input_path in input_paths:
-		with VideoFileReader(input_path) as reader:
-			fps = reader.get_frame_rate()
-			ffmpeg.extract_audio(input_path, '/cs/grad/asaph/testing/tmp.wav')
-			mixed_signal = AudioSignal.from_wav_file('/cs/grad/asaph/testing/tmp.wav')
-			sr = mixed_signal.get_sample_rate()
-
-			dataProcessor = utils.DataProcessor(fps, sr)
-			video_sampels, mixed_spectrograms = dataProcessor.preprocess_inputs(reader.read_all_frames(convert_to_gray_scale=True), mixed_signal)
-			video_normalizer.normalize(video_sampels)
-
-			enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_sampels)
-			enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
-			mixed_spec = np.concatenate(list(mixed_spectrograms), axis=1)
-
-			# mixed_signal = AudioSignal.from_wav_file('/cs/grad/asaph/testing/mixture.wav')
-
-			predicted_speech_signal = dataProcessor.reconstruct_signal(enhanced_spec, mixed_signal)
-			predicted_speech_signal.save_to_wav_file(os.path.splitext(input_path)[0] + '.wav')
-
-			np.save(os.path.split(input_path)[0] + '/mixed.npy', mixed_spec)
-			np.save(os.path.split(input_path)[0] + '/enhanced.npy', enhanced_spec)
+# def test(args):
+# 	model_cache_dir = os.path.join(args.base_folder, 'cache/models', args.model)
+# 	normalization_path = os.path.join(model_cache_dir, 'normalization.pkl')
+#
+# 	network = SpeechEnhancementNetwork.load(model_cache_dir)
+# 	with open(normalization_path, 'rb') as normalization_fd:
+# 		video_normalizer = pickle.load(normalization_fd)
+#
+# 	input_paths = args.paths
+#
+# 	for input_path in input_paths:
+# 		with VideoFileReader(input_path) as reader:
+# 			fps = reader.get_frame_rate()
+# 			ffmpeg.extract_audio(input_path, '/cs/grad/asaph/testing/tmp.wav')
+# 			mixed_signal = AudioSignal.from_wav_file('/cs/grad/asaph/testing/tmp.wav')
+# 			sr = mixed_signal.get_sample_rate()
+#
+# 			dataProcessor = DataProcessor(fps, sr)
+# 			video_sampels, mixed_spectrograms = dataProcessor.preprocess_inputs(reader.read_all_frames(convert_to_gray_scale=True), mixed_signal)
+# 			video_normalizer.normalize(video_sampels)
+#
+# 			enhanced_speech_spectrograms = network.predict(mixed_spectrograms, video_sampels)
+# 			enhanced_spec = np.concatenate(list(enhanced_speech_spectrograms), axis=1)
+# 			mixed_spec = np.concatenate(list(mixed_spectrograms), axis=1)
+#
+# 			# mixed_signal = AudioSignal.from_wav_file('/cs/grad/asaph/testing/mixture.wav')
+#
+# 			predicted_speech_signal = dataProcessor.reconstruct_signal(enhanced_spec, mixed_signal)
+# 			predicted_speech_signal.save_to_wav_file(os.path.splitext(input_path)[0] + '.wav')
+#
+# 			np.save(os.path.split(input_path)[0] + '/mixed.npy', mixed_spec)
+# 			np.save(os.path.split(input_path)[0] + '/enhanced.npy', enhanced_spec)
 
 
 def generate_vocoder_dataset(args):
@@ -315,7 +265,7 @@ def generate_vocoder_dataset(args):
 	with open(normalization_path, 'rb') as normalization_fd:
 		video_normalizer = pickle.load(normalization_fd)
 
-	dataProcessor = utils.DataProcessor(args.frames_per_second, args.sampling_rate)
+	dataProcessor = DataProcessor(args.frames_per_second, args.sampling_rate)
 
 	train_video_samples, train_mixed_spectrograms, train_source_spectrograms, train_source_phases = load_preprocessed_samples(
 		[train_preprocessed_blob_paths], max_samples=20
@@ -493,12 +443,34 @@ class PredictionStorage(object):
 		for i, spec in enumerate(spectrograms):
 			np.save(os.path.join(dir_path, names[i]), spec)
 
-
-
+# def list_speakers(args):
+# 	if args.speakers is None:
+# 		dataset = AudioVisualDataset(args.dataset)
+# 		speaker_ids = dataset.list_speakers()
+# 	else:
+# 		speaker_ids = args.speakers
+#
+# 	if args.ignored_speakers is not None:
+# 		for speaker_id in args.ignored_speakers:
+# 			speaker_ids.remove(speaker_id)
+#
+# 	return speaker_ids
+#
+#
+# def list_data(dataset, speaker_ids, noise_dirs, max_files=None, shuffle=True):
+# 	speech_dataset = AudioVisualDataset(dataset)
+# 	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle=shuffle)
+#
+# 	noise_dataset = AudioDataset(noise_dirs)
+# 	noise_file_paths = noise_dataset.subset(max_files, shuffle=shuffle)[::-1]
+#
+# 	n_files = min(speech_subset.size(), len(noise_file_paths))
+#
+# 	return speech_subset.video_paths()[:n_files], speech_subset.audio_paths()[:n_files], noise_file_paths[:n_files]
 
 def list_speakers(args):
 	if args.speakers is None:
-		dataset = AudioVisualDataset(args.dataset)
+		dataset = AudioVisualDataset(args.dataset_dir)
 		speaker_ids = dataset.list_speakers()
 	else:
 		speaker_ids = args.speakers
@@ -510,16 +482,17 @@ def list_speakers(args):
 	return speaker_ids
 
 
-def list_data(dataset, speaker_ids, noise_dirs, max_files=None, shuffle=True):
-	speech_dataset = AudioVisualDataset(dataset)
-	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle=shuffle)
+def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True):
+	speech_dataset = AudioVisualDataset(dataset_dir)
+	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle)
 
 	noise_dataset = AudioDataset(noise_dirs)
-	noise_file_paths = noise_dataset.subset(max_files, shuffle=shuffle)[::-1]
+	noise_file_paths = noise_dataset.subset(max_files, shuffle)
 
-	n_files = min(speech_subset.size(), len(noise_file_paths))
+	n_files = min(len(speech_subset), len(noise_file_paths))
 
-	return speech_subset.video_paths()[:n_files], speech_subset.audio_paths()[:n_files], noise_file_paths[:n_files]
+	return speech_subset[:n_files], noise_file_paths[:n_files]
+
 
 
 
@@ -576,11 +549,11 @@ def main():
 	predict_vocoder_parser.add_argument('-g', '--gpus', type=int, default=1)
 	predict_vocoder_parser.set_defaults(func=predict_vocoder)
 
-	test_parser = action_parsers.add_parser('test')
-	test_parser.add_argument('-mn', '--model', type=str, required=True)
-	test_parser.add_argument('-p', '--paths', type=str, nargs='+', required=True)
-	test_parser.add_argument('-g', '--gpus', type=int, default=1)
-	test_parser.set_defaults(func=test, which='test')
+	# test_parser = action_parsers.add_parser('test')
+	# test_parser.add_argument('-mn', '--model', type=str, required=True)
+	# test_parser.add_argument('-p', '--paths', type=str, nargs='+', required=True)
+	# test_parser.add_argument('-g', '--gpus', type=int, default=1)
+	# test_parser.set_defaults(func=test, which='test')
 
 	args = parser.parse_args()
 	args.func(args)
