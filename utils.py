@@ -161,14 +161,14 @@ def strip_audio(video_path):
 
 	return signal
 
-def preprocess_data(speech_entries, noise_file_paths):
+def preprocess_data(speech_entries, noise_file_paths, num_cpus):
 	with VideoFileReader(speech_entries[0].video_path) as reader:
 		fps = reader.get_frame_rate()
 	sr = AudioSignal.from_wav_file(speech_entries[0].audio_path).get_sample_rate()
 	data_processor = DataProcessor(fps, sr)
 
 	samples = zip(speech_entries, noise_file_paths)
-	thread_pool = multiprocess.Pool(24)
+	thread_pool = multiprocess.Pool(num_cpus)
 	preprocessed = thread_pool.map(data_processor.try_preprocess_sample, samples)
 	preprocessed = [p for p in preprocessed if p is not None]
 
@@ -255,7 +255,7 @@ class AssetManager:
 		if not os.path.exists(self.__cache_dir):
 			os.mkdir(self.__cache_dir)
 
-		self.__preprocessed_dir = os.path.join(self.__cache_dir, 'preprocessed')label
+		self.__preprocessed_dir = os.path.join(self.__cache_dir, 'preprocessed')
 		if not os.path.exists(self.__preprocessed_dir):
 			os.mkdir(self.__preprocessed_dir)
 

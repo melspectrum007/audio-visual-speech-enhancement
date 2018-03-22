@@ -24,7 +24,7 @@ def preprocess(args):
 	)
 
 	video_samples, mixed_spectrograms, mixed_phases, source_spectrograms, source_phases, source_waveforms, metadatas = preprocess_data(
-		speech_entries, noise_file_paths)
+		speech_entries, noise_file_paths, args.cpus)
 
 	np.savez(
 		assets.get_preprocessed_blob_data_path(args.data_name),
@@ -510,6 +510,7 @@ def main():
 	preprocess_parser.add_argument('-is', '--ignored_speakers', nargs='+', type=str)
 	preprocess_parser.add_argument('-n', '--noise_dirs', nargs='+', type=str, required=True)
 	preprocess_parser.add_argument('-ns', '--number_of_samples', type=int)
+	preprocess_parser.add_argument('-c', '--cpus', type=int, default=8)
 	preprocess_parser.set_defaults(func=preprocess, which='preprocess')
 
 	generate_parser = action_parsers.add_parser('generate_vocoder_dataset')
