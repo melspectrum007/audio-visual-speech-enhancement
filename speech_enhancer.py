@@ -40,48 +40,9 @@ def preprocess(args):
 		pickle.dump(metadatas, preprocessed_fd)
 
 
-def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
-	if type(preprocessed_blob_paths) is not list:
-		preprocessed_blob_paths = [preprocessed_blob_paths]
-
-	all_video_samples = []
-	all_mixed_spectrograms = []
-	all_source_spectrograms = []
-	all_source_phases = []
-	all_mixed_phases = []
-	all_waveforms = []
-
-	for preprocessed_blob_path in preprocessed_blob_paths:
-		print('loading preprocessed samples from %s' % preprocessed_blob_path)
-		
-		with np.load(preprocessed_blob_path) as data:
-			all_video_samples.append(data['video_samples'][:max_samples])
-			all_mixed_spectrograms.append(data['mixed_spectrograms'][:max_samples])
-			all_source_spectrograms.append(data['source_spectrograms'][:max_samples])
-			all_mixed_phases.append(data['mixed_phases'][:max_samples])
-			all_source_phases.append(data['source_phases'][:max_samples])
-			all_waveforms.append(data['source_waveforms'][:max_samples])
-
-	video_samples = np.concatenate(all_video_samples, axis=0)
-	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
-	source_spectrograms = np.concatenate(all_source_spectrograms, axis=0)
-	source_phases = np.concatenate(all_source_phases, axis=0)
-	mixed_phases = np.concatenate(all_mixed_phases, axis=0)
-	source_waveforms = np.concatenate(all_waveforms, axis=0)
-
-	return (
-		video_samples,
-		mixed_spectrograms,
-		source_spectrograms,
-		source_phases,
-		mixed_phases,
-		source_waveforms
-	)
-
-
 def train(args):
 	assets = AssetManager(args.base_folder)
-	assets.create_model(args.model_name)
+	assets.create_model(args.model)
 
 	train_preprocessed_blob_paths = [assets.get_preprocessed_blob_data_path(p) for p in args.train_data_names]
 	val_preprocessed_blob_paths = [assets.get_preprocessed_blob_data_path(p) for p in args.val_data_names]
@@ -99,7 +60,7 @@ def train(args):
 	video_normalizer.normalize(train_video_samples)
 	video_normalizer.normalize(val_video_samples)
 
-	with open(assets.get_normalization_cache_path(args.model_name), 'wb') as normalization_fd:
+	with open(assets.get_normalization_cache_path(args.model), 'wb') as normalization_fd:
 		pickle.dump(video_normalizer, normalization_fd)
 
 	num_frames = train_video_samples.shape[3]
@@ -135,7 +96,7 @@ def train(args):
 											 kernel_size=7,
 											 num_blocks=20,
 											 num_gpus=args.gpus,
-											 model_cache_dir=assets.get_model_cache_path(args.model_name)
+											 model_cache_dir=assets.get_model_cache_path(args.model)
 											 )
 	network.train(
 		train_mixed_spectrograms, train_video_samples, train_source_spectrograms,
@@ -147,7 +108,7 @@ def train(args):
 
 def predict(args):
 	assets = AssetManager(args.base_folder)
-	assets.create_prediction_dir(args.model_name)
+	assets.create_prediction_dir(args.model)
 
 	testset_path = assets.get_preprocessed_blob_data_path(args.data_name)
 	metadata_path = assets.get_preprocessed_blob_metadata_path(args.data_name)
@@ -166,15 +127,16 @@ def predict(args):
 	# source_specs = split_and_concat(source_specs[..., :num_audio_bins], axis=-1, split=SPLIT)
 	# vid = split_and_concat(vid, axis=-1, split=SPLIT)
 
-	with open(assets.get_normalization_cache_path(args.model_name), 'rb') as normalization_fd:
-		print 'load normalizer from:', assets.get_normalization_cache_path(args.model_name)
+	with open(assets.get_normalization_cache_path(args.model), 'rb') as normalization_fd:
+		print 'load normalizer from:', assets.get_normalization_cache_path(args.model)
 		video_normalizer = pickle.load(normalization_fd)
 
 	video_normalizer.normalize(vid)
 
 	dp = DataProcessor(25, 16000)
-	network = SpeechEnhancementNetwork.load(assets.get_model_cache_path(args.model_name))
+	network = SpeechEnhancementNetwork.load(assets.get_model_cache_path(args.model))
 
+	print 'predicting enhanced specs'
 	enhanced_specs = network.predict(np.swapaxes(mix_specs, 1, 2), np.rollaxis(vid, 3, 1))
 	enhanced_specs = np.swapaxes(enhanced_specs, 1, 2)
 
@@ -191,13 +153,15 @@ def predict(args):
 	print 'rmse loss:', rmse
 	print 'mean mean loss:', mean_mean
 
-	date_dir = os.path.join(assets.get_prediction_dir(args.model_name), datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
+	date_dir = os.path.join(assets.get_prediction_dir(args.model), datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
 	os.mkdir(date_dir)
 
 	for i in range(enhanced_specs.shape[0]):
 		metadata = metadatas[i]
-		audio_name = os.path.splitext(metadata.audio_path)[0]
-		noise_name = os.path.splitext(metadata.noise_path)[0]
+		audio_name = os.path.basename(os.path.splitext(metadata.audio_path)[0])
+		noise_name = os.path.basename(os.path.splitext(metadata.noise_path)[0])
+
+		print 'saving', audio_name, noise_name
 
 		sample_dir = os.path.join(date_dir, audio_name + '_' + noise_name)
 		os.mkdir(sample_dir)
@@ -483,6 +447,8 @@ def list_speakers(args):
 
 
 def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True):
+	if max_files is None:
+		max_files = 1000
 	speech_dataset = AudioVisualDataset(dataset_dir)
 	speech_subset = speech_dataset.subset(speaker_ids, max_files, shuffle)
 
@@ -493,6 +459,120 @@ def list_data(dataset_dir, speaker_ids, noise_dirs, max_files=None, shuffle=True
 
 	return speech_subset[:n_files], noise_file_paths[:n_files]
 
+
+def load_preprocessed_samples(preprocessed_blob_paths, max_samples=None):
+	if type(preprocessed_blob_paths) is not list:
+		preprocessed_blob_paths = [preprocessed_blob_paths]
+
+	all_video_samples = []
+	all_mixed_spectrograms = []
+	all_source_spectrograms = []
+	all_source_phases = []
+	all_mixed_phases = []
+	all_waveforms = []
+
+	for preprocessed_blob_path in preprocessed_blob_paths:
+		print('loading preprocessed samples from %s' % preprocessed_blob_path)
+
+		with np.load(preprocessed_blob_path) as data:
+			all_video_samples.append(data['video_samples'][:max_samples])
+			all_mixed_spectrograms.append(data['mixed_spectrograms'][:max_samples])
+			all_source_spectrograms.append(data['source_spectrograms'][:max_samples])
+			all_mixed_phases.append(data['mixed_phases'][:max_samples])
+			all_source_phases.append(data['source_phases'][:max_samples])
+			all_waveforms.append(data['source_waveforms'][:max_samples])
+
+	video_samples = np.concatenate(all_video_samples, axis=0)
+	mixed_spectrograms = np.concatenate(all_mixed_spectrograms, axis=0)
+	source_spectrograms = np.concatenate(all_source_spectrograms, axis=0)
+	source_phases = np.concatenate(all_source_phases, axis=0)
+	mixed_phases = np.concatenate(all_mixed_phases, axis=0)
+	source_waveforms = np.concatenate(all_waveforms, axis=0)
+
+	return (
+		video_samples,
+		mixed_spectrograms,
+		source_spectrograms,
+		source_phases,
+		mixed_phases,
+		source_waveforms
+	)
+
+
+class AssetManager:
+
+	def __init__(self, base_dir):
+		self.__base_dir = base_dir
+
+		self.__cache_dir = os.path.join(self.__base_dir, 'cache')
+		if not os.path.exists(self.__cache_dir):
+			os.mkdir(self.__cache_dir)
+
+		self.__preprocessed_dir = os.path.join(self.__cache_dir, 'preprocessed')
+		if not os.path.exists(self.__preprocessed_dir):
+			os.mkdir(self.__preprocessed_dir)
+
+		self.__models_dir = os.path.join(self.__cache_dir, 'models')
+		if not os.path.exists(self.__models_dir):
+			os.mkdir(self.__models_dir)
+
+		self.__out_dir = os.path.join(self.__base_dir, 'out')
+		if not os.path.exists(self.__out_dir):
+			os.mkdir(self.__out_dir)
+
+		self.__data_dir = os.path.join(self.__base_dir, 'data')
+		if not os.path.exists(self.__data_dir):
+			os.mkdir(self.__data_dir)
+
+	def get_data_set_dir(self, data_set):
+		return os.path.join(self.__data_dir, data_set)
+
+	def create_preprocessed_data_dir(self, data_name):
+		preprocessed_data_dir = os.path.join(self.__preprocessed_dir, data_name)
+		if not os.path.exists(preprocessed_data_dir):
+			os.mkdir(preprocessed_data_dir)
+
+	def get_preprocessed_blob_data_path(self, data_name):
+		return os.path.join(self.__preprocessed_dir, data_name, 'data.npz')
+
+	def get_preprocessed_blob_metadata_path(self, data_name):
+		return os.path.join(self.__preprocessed_dir, data_name, 'metadata.pkl')
+
+	def create_model(self, model_name):
+		model_dir = os.path.join(self.__models_dir, model_name)
+		if not os.path.exists(model_dir):
+			os.mkdir(model_dir)
+
+	def get_model_cache_path(self, model_name):
+		return os.path.join(self.__models_dir, model_name)
+
+	def get_normalization_cache_path(self, model_name):
+		model_dir = os.path.join(self.__models_dir, model_name)
+		return os.path.join(model_dir, 'normalization.pkl')
+
+	def get_tensorboard_dir(self, model_name):
+		model_dir = os.path.join(self.__models_dir, model_name)
+		tensorboard_dir = os.path.join(model_dir, 'tensorboard')
+
+		if not os.path.exists(tensorboard_dir):
+			os.mkdir(tensorboard_dir)
+
+		return tensorboard_dir
+
+	def create_prediction_dir(self, model_name):
+		pred_dir = os.path.join(self.__out_dir, model_name)
+		if not os.path.exists(pred_dir):
+			os.mkdir(pred_dir)
+
+	def get_prediction_dir(self, model_name):
+		return os.path.join(self.__out_dir, model_name)
+
+	def create_prediction_storage(self, model_name, data_name):
+		prediction_dir = os.path.join(self.__out_dir, model_name, data_name)
+		if not os.path.exists(prediction_dir):
+			os.makedirs(prediction_dir)
+
+		return prediction_dir
 
 
 
