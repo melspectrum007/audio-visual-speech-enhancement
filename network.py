@@ -36,12 +36,14 @@ class SpeechEnhancementNetwork(object):
 		delta = Conv1D(num_filters, kernel_size, padding='same')(x)
 		delta = BatchNormalization()(delta)
 		delta = LeakyReLU()(delta)
+		delta = Dropout(0.5)(delta)
 		delta = Conv1D(num_filters, kernel_size, padding='same')(delta)
 
 		if not last:
 			features = Conv1D(num_filters, kernel_size, padding='same')(x)
 			features = BatchNormalization()(features)
 			features = LeakyReLU()(features)
+			features = Dropout(0.5)(features)
 
 		delta = Add()([previous_delta, delta])
 
@@ -65,7 +67,11 @@ class SpeechEnhancementNetwork(object):
 
 		vid_encoding = cls.__build_video_encoder(vid_shape)(input_vid)
 
-		x = Concatenate()([input_spec, vid_encoding])
+		spec = Conv1D(num_filters, kernel_size, padding='same')(input_spec)
+		spec = BatchNormalization()(spec)
+		spec = LeakyReLU(spec )
+
+		x = Concatenate()([spec, vid_encoding])
 
 		delta = Conv1D(num_filters, kernel_size, padding='same')(x)
 		features = Conv1D(num_filters, kernel_size, padding='same')(x)
@@ -107,37 +113,52 @@ class SpeechEnhancementNetwork(object):
 		x = TimeDistributed(BatchNormalization())(x)
 		x = TimeDistributed(LeakyReLU())(x)
 		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
+		x = TimeDistributed(Dropout(0.5))(x)
 
 		x = TimeDistributed(Conv2D(80, (5, 5), padding='same'))(x)
 		x = TimeDistributed(BatchNormalization())(x)
 		x = TimeDistributed(LeakyReLU())(x)
 		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
+		x = TimeDistributed(Dropout(0.5))(x)
 
 		x = TimeDistributed(Conv2D(80, (3, 3), padding='same'))(x)
 		x = TimeDistributed(BatchNormalization())(x)
 		x = TimeDistributed(LeakyReLU())(x)
 		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
+		x = TimeDistributed(Dropout(0.5))(x)
 
 		x = TimeDistributed(Conv2D(80, (3, 3), padding='same'))(x)
 		x = TimeDistributed(BatchNormalization())(x)
 		x = TimeDistributed(LeakyReLU())(x)
 		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
+		x = TimeDistributed(Dropout(0.5))(x)
 
 		x = TimeDistributed(Conv2D(80, (3, 3), padding='same'))(x)
 		x = TimeDistributed(BatchNormalization())(x)
 		x = TimeDistributed(LeakyReLU())(x)
 		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
+		x = TimeDistributed(Dropout(0.5))(x)
 
 		x = TimeDistributed(Conv2D(80, (3, 3), padding='same'))(x)
 		x = TimeDistributed(BatchNormalization())(x)
 		x = TimeDistributed(LeakyReLU())(x)
 		x = TimeDistributed(MaxPool2D(strides=(2, 2), padding='same'))(x)
+		x = TimeDistributed(Dropout(0.5))(x)
 
 		x = TimeDistributed(Flatten())(x)
 
 		x = Conv1D(80, 5, padding='same')(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+
 		x = Conv1D(80, 5, padding='same')(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+
 		x = Conv1D(80, 5, padding='same')(x)
+		x = TimeDistributed(BatchNormalization())(x)
+		x = TimeDistributed(LeakyReLU())(x)
+
 		x = Conv1D(80, 5, padding='same')(x)
 
 		x = UpSampling1D(4)(x)
