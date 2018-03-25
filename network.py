@@ -178,12 +178,14 @@ class SpeechEnhancementNetwork(object):
 															 num_skip_filters=num_probs,
 															 number=i+1)(waveform_logits)
 
+		waveForm_probs = Softmax()(waveform_logits)
+
 		if num_gpus > 1:
 			with tf.device('/cpu:0'):
-				model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveform_logits], name='Net')
+				model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveForm_probs], name='Net')
 				fit_model = multi_gpu_model(model, gpus=num_gpus)
 		else:
-			model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveform_logits], name='Net')
+			model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveForm_probs], name='Net')
 			fit_model = model
 
 		optimizer = optimizers.Adam(lr=5e-4)
