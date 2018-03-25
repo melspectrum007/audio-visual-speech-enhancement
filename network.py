@@ -69,7 +69,7 @@ class SpeechEnhancementNetwork(object):
 
 		spec = Conv1D(num_filters, kernel_size, padding='same')(input_spec)
 		spec = BatchNormalization()(spec)
-		spec = LeakyReLU(spec )
+		spec = LeakyReLU()(spec)
 
 		x = Concatenate()([spec, vid_encoding])
 
