@@ -1,10 +1,9 @@
-import os
 
 from datetime import datetime
+
 from keras import optimizers
 from keras.layers import *
 from keras.callbacks import *
-
 from keras.models import Model, load_model
 from keras.utils import multi_gpu_model
 
@@ -178,14 +177,14 @@ class SpeechEnhancementNetwork(object):
 															 num_skip_filters=num_probs,
 															 number=i+1)(waveform_logits)
 
-		waveForm_probs = Softmax()(waveform_logits)
+		waveform_probs = Softmax()(waveform_logits)
 
 		if num_gpus > 1:
 			with tf.device('/cpu:0'):
-				model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveForm_probs], name='Net')
+				model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveform_probs], name='Net')
 				fit_model = multi_gpu_model(model, gpus=num_gpus)
 		else:
-			model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveForm_probs], name='Net')
+			model = Model(inputs=[input_vid, input_spec], outputs=[spec, waveform_probs], name='Net')
 			fit_model = model
 
 		optimizer = optimizers.Adam(lr=5e-4)
@@ -196,8 +195,8 @@ class SpeechEnhancementNetwork(object):
 
 		return SpeechEnhancementNetwork(model, fit_model, num_gpus, model_cache_dir)
 
-	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms,
-			  validation_mixed_spectrograms, validation_video_samples, validation_label_spectrograms):
+	def train(self, train_mixed_spectrograms, train_video_samples, train_label_spectrograms, train_label_probs,
+			  val_mixed_spectrograms, val_video_samples, val_label_spectrograms, val_label_probs):
 
 		SaveModel = LambdaCallback(on_epoch_end=lambda epoch, logs: self.save_model())
 		lr_decay = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0, verbose=1)
@@ -209,11 +208,11 @@ class SpeechEnhancementNetwork(object):
 								  write_grads=True)
 		self.__fit_model.fit(
 			x=[train_video_samples, train_mixed_spectrograms],
-			y=[train_label_spectrograms],
+			y=[train_label_spectrograms, train_label_probs],
 
 			validation_data=(
-				[validation_video_samples, validation_mixed_spectrograms],
-				[validation_label_spectrograms],
+				[val_video_samples, val_mixed_spectrograms],
+				[val_label_spectrograms, val_label_probs],
 			),
 
 			batch_size=BATCH_SIZE * self.gpus, epochs=1000,

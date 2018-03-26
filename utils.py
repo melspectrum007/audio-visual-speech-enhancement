@@ -203,6 +203,26 @@ def griffin_lim(magnitude, n_fft, hop_length, n_iterations, initial_phase=None):
 	return signal
 
 
+def mu_law_quantization(x, mu, max_val=None):
+	x = x.astype('f')
+	if max_val is None:
+		max_val = np.abs(x).max()
+
+	x = np.clip(x, -max_val, max_val - 1)
+	x /= max_val
+
+	y = np.sign(x) * np.log(1 + np.abs(x) * (mu - 1)) / np.log(1 + (mu - 1))
+	bins = np.linspace(-1, 1, mu + 1)
+	return np.digitize(y, bins) - 1
+
+
+def one_hot_encoding(y, num_classes):
+	one_hot = np.zeros((y.shape[0], y.shape[1], num_classes))
+	one_hot[np.arange(one_hot.shape[0])[:, np.newaxis], np.arange(one_hot.shape[1]), y] = 1
+
+	return one_hot
+
+
 class VideoNormalizer(object):
 
 	def __init__(self, video_samples):
@@ -227,3 +247,5 @@ class AudioNormalizer(object):
 	def denormalize(self, spectrograms):
 		spectrograms *= self.__std
 		spectrograms += self.__mean
+
+

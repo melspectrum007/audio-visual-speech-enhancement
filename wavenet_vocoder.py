@@ -225,24 +225,7 @@ class WavenetVocoder(object):
 
 		return vocoder
 
-def mu_law_quantization(x, mu, max_val=None):
-	x = x.astype('f')
-	if max_val is None:
-		max_val = np.abs(x).max()
 
-	x = np.clip(x, -max_val, max_val - 1)
-	x /= max_val
-
-	y = np.sign(x) * np.log(1 + np.abs(x) * (mu - 1)) / np.log(1 + (mu - 1))
-	bins = np.linspace(-1, 1, mu + 1)
-	return np.digitize(y, bins) - 1
-
-
-def one_hot_encoding(y, num_classes):
-	one_hot = np.zeros((y.shape[0], num_classes, y.shape[1]))
-	one_hot[np.arange(one_hot.shape[0])[:, np.newaxis], y, np.arange(one_hot.shape[2])] = 1
-
-	return one_hot
 
 
 def log_sum_exp(x):
